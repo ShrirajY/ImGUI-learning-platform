@@ -1,0 +1,33 @@
+{
+  "id": "01-immediate-mode",
+  "title": "Immediate Mode Explained",
+  "summary": "Retained vs immediate mode, the per-frame loop, the core + platform + renderer backend architecture, ImGuiIO, and where UI state really lives.",
+  "minutes": 15,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "In immediate mode, how do you remove a button from the UI?",
+      "options": ["Call <code>ImGui::DestroyButton()</code>", "Stop calling <code>ImGui::Button()</code> for it", "Set its visible flag to false", "Send it a WM_CLOSE message"],
+      "answer": 1,
+      "explain": "Widgets only exist while you call them. If you don't call it this frame, it isn't there."
+    },
+    {
+      "q": "Which file talks to OpenGL?",
+      "options": ["<code>imgui.cpp</code>", "<code>imgui_widgets.cpp</code>", "<code>imgui_impl_win32.cpp</code>", "<code>imgui_impl_opengl2.cpp</code>"],
+      "answer": 3,
+      "explain": "The core never calls OpenGL. The renderer backend <code>imgui_impl_opengl2.cpp</code> draws the triangles ImGui produces."
+    },
+    {
+      "q": "The user is typing an entity name and presses D. How should the engine avoid moving the camera?",
+      "options": ["Check <code>io.WantCaptureKeyboard</code> before handling game keys", "Disable the WndProc handler", "Call <code>ImGui::Render()</code> earlier", "It can't - both will always react"],
+      "answer": 0,
+      "explain": "ImGui sets <code>io.WantCaptureKeyboard</code> when a widget wants the keyboard. Skip game input while it is true."
+    },
+    {
+      "q": "Where is the checked/unchecked state of <code>ImGui::Checkbox(\"Grid\", &amp;gShowGrid)</code> stored?",
+      "options": ["Inside an ImGui checkbox object", "In your variable <code>gShowGrid</code>", "In imgui.ini", "In the GPU font texture"],
+      "answer": 1,
+      "explain": "You pass a pointer to your own data. ImGui reads it to draw and writes it on click."
+    }
+  ]
+}

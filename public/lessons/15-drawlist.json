@@ -1,0 +1,27 @@
+{
+  "id": "15-drawlist",
+  "title": "Custom Drawing with ImDrawList",
+  "summary": "Draw lines, shapes, arcs and text yourself: build custom widgets (knob, joystick), label entities in the 3D view, add an orientation gizmo and a clickable mini-map.",
+  "minutes": 30,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "You want entity name tags over the 3D scene, but hidden behind your editor windows. Which draw list?",
+      "options": ["<code>GetWindowDrawList()</code>", "<code>GetBackgroundDrawList()</code>", "<code>GetForegroundDrawList()</code>", "Any of them, the order is the same"],
+      "answer": 1,
+      "explain": "The background list is rendered before all windows: above your OpenGL scene, below the UI."
+    },
+    {
+      "q": "What coordinate system do ImDrawList functions use?",
+      "options": ["Window-local pixels", "Absolute screen pixels (use GetCursorScreenPos)", "Normalised 0..1", "OpenGL clip space"],
+      "answer": 1,
+      "explain": "Draw list coordinates are absolute. <code>GetCursorScreenPos()</code> gives you the screen position of the layout cursor inside a window."
+    },
+    {
+      "q": "Why do custom widgets usually start with <code>InvisibleButton</code>?",
+      "options": ["It's required before any draw list call", "It reserves layout space and provides hover/active/click state and an ID", "It clears the area", "It enables anti-aliasing"],
+      "answer": 1,
+      "explain": "Draw calls don't create items. The invisible button gives the widget a size in the layout and makes <code>IsItemActive()</code> etc. work."
+    }
+  ]
+}

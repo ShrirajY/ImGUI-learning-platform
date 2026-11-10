@@ -1,0 +1,175 @@
+<h2>Why every engine has a console</h2>
+<p>A console does two jobs. It is the <b>output</b> of the engine: every log message, warning and error, in one searchable place. It is also an <b>input</b>: a command line that reaches any system without building a UI for it (spawn an object, change the time scale, toggle debug drawing). Quake made it famous. Unreal, Source and most in-house engines still ship one.</p>
+<div class="mock" style="min-width:520px"><div class="mock-title">Console</div><div class="mock-body">
+  <div class="mock-row"><span class="mock-check">&#10003;</span>Info (12) <span class="mock-check">&#10003;</span>Warn (1) <span class="mock-check">&#10003;</span>Error (1) <span class="mock-btn">Copy</span><span class="mock-btn">Clear</span></div>
+  <div style="background:#00000055;padding:4px 6px;margin:4px 0">
+    <div><span class="muted">[   0.00]</span> Engine initialised - OpenGL 4.6</div>
+    <div style="color:#f2c94c"><span class="muted">[   0.00]</span> This is a warning</div>
+    <div style="color:#ff6b6b"><span class="muted">[   0.00]</span> This is an error</div>
+    <div style="color:#80ccff"><span class="muted">[   3.12]</span> &gt; spawn sphere Moon</div>
+    <div><span class="muted">[   3.12]</span> Spawned 'Moon' (Sphere) at camera target</div>
+  </div>
+  <div class="mock-row"><span class="mock-frame" style="flex:1">timescale 0.5</span></div>
+</div></div>
+
+<h2>Reading the engine log</h2>
+<p>The engine keeps the last 512 lines in a ring buffer. You don't touch the ring directly. Index 0 is always the oldest line:</p>
+<pre><code class="cpp">struct LogLine { int level; float time; char text[240]; };   // level: LOG_INFO / LOG_WARN / LOG_ERROR
+
+int count = Engine_GetLogCount();
+for (int i = 0; i &lt; count; i++)
+{
+    const LogLine *l = Engine_GetLog(i);
+    ImGui::TextUnformatted(l-&gt;text);         // never Text(l-&gt;text): lines may contain '%'
+}</code></pre>
+<p>Writing is just <code>Engine_Log</code>, <code>Engine_LogWarn</code> and <code>Engine_LogError</code>, all printf-style. Remember that rule when you echo user input: <code>Engine_Log("&gt; %s", input)</code>, never <code>Engine_Log(input)</code>.</p>
+
+<h2>Colour by level</h2>
+<pre><code class="cpp">bool hasCol = true; ImVec4 col;
+if      (l-&gt;level == LOG_ERROR) col = ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
+else if (l-&gt;level == LOG_WARN)  col = ImVec4(1.0f, 0.8f, 0.3f, 1.0f);
+else hasCol = false;
+
+if (hasCol) ImGui::PushStyleColor(ImGuiCol_Text, col);
+ImGui::TextUnformatted(l-&gt;text);
+if (hasCol) ImGui::PopStyleColor();</code></pre>
+<p><code>TextColored</code> would also work, but it takes a format string, so you would have to write <code>TextColored(col, "%s", text)</code>. Push/Pop with <code>TextUnformatted</code> is the faster and safer pattern for raw text.</p>
+
+<h2>Filtering</h2>
+<p>Two independent filters, both applied with <code>continue</code> in the loop:</p>
+<ul>
+  <li><b>Level checkboxes</b>: <code>static bool showLevel[3]</code>, indexed by <code>l-&gt;level</code>. The labels show live counts using <code>"Warn (%d)###warn"</code>. The part after <code>###</code> is the ID, so the checkbox keeps its identity while the number changes.</li>
+  <li><b>Text search</b>: <code>ImGuiTextFilter</code> from lesson 8. <code>filter.Draw()</code> draws the input and <code>filter.PassFilter(l-&gt;text)</code> tests each line. Try <code>spawn,-error</code>.</li>
+</ul>
+
+<h2>Layout: scrolling region + reserved footer</h2>
+<p>The log must scroll while the input line stays pinned at the bottom. Put the log in a child whose height is <b>negative</b>: "fill everything except this many pixels".</p>
+<pre><code class="cpp">const float footer = ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeightWithSpacing();
+if (ImGui::BeginChild("LogRegion", ImVec2(0, -footer), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
+{
+    // ... lines ...
+}
+ImGui::EndChild();
+ImGui::Separator();
+ImGui::InputText("##cmd", ...);    // fits exactly in the reserved space</code></pre>
+<p><code>GetFrameHeightWithSpacing()</code> is the height of one framed widget (an InputText) plus the spacing under it. The extra <code>ItemSpacing.y</code> covers the separator.</p>
+
+<h2>Auto-scroll that respects the user</h2>
+<pre><code class="cpp">// at the END of the child's contents:
+if (scrollToBottom || (autoScroll &amp;&amp; ImGui::GetScrollY() &gt;= ImGui::GetScrollMaxY()))
+    ImGui::SetScrollHereY(1.0f);    // 1.0 = put the current cursor position at the bottom edge
+scrollToBottom = false;</code></pre>
+<p>Only follow new lines if the view was already at the bottom. If the user scrolled up to read an error, new spam must not yank them back down. The <code>scrollToBottom</code> flag forces one jump after the user runs a command, because they want to see the result.</p>
+
+<h2>The command line</h2>
+<pre><code class="cpp">bool reclaimFocus = false;
+ImGuiInputTextFlags flags = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_EscapeClearsAll
+                          | ImGuiInputTextFlags_CallbackHistory  | ImGuiInputTextFlags_CallbackCompletion;
+ImGui::SetNextItemWidth(-FLT_MIN);
+if (ImGui::InputText("##cmd", input, sizeof(input), flags, ConsoleCallback))
+{
+    Execute(input);
+    input[0] = 0;
+    reclaimFocus = true;
+}
+ImGui::SetItemDefaultFocus();              // focus the input when the window first appears
+if (reclaimFocus)
+    ImGui::SetKeyboardFocusHere(-1);       // -1 = re-focus the widget we just drew</code></pre>
+<table>
+  <tr><th>Piece</th><th>Why</th></tr>
+  <tr><td><code>EnterReturnsTrue</code></td><td>Normally InputText returns true on <i>every edit</i>. With this flag it returns true only when Enter is pressed, which is what a command line wants</td></tr>
+  <tr><td><code>SetKeyboardFocusHere(-1)</code></td><td>Pressing Enter deactivates the field. Without this, you'd have to click it again for every command</td></tr>
+  <tr><td><code>EscapeClearsAll</code></td><td>Esc empties the line (the default behaviour is "revert")</td></tr>
+  <tr><td><code>CallbackHistory</code> / <code>CallbackCompletion</code></td><td>Call your function on Up/Down and on Tab</td></tr>
+</table>
+
+<h2>A tiny command parser</h2>
+<p>No need for anything fancy: trim the line, split off the first word, and compare it with <code>_stricmp</code> (case-insensitive). The rest of the line is the arguments. That lets <code>spawn sphere Big Moon</code> use "Big Moon" (with a space) as the name.</p>
+<pre><code class="cpp">char *args = buf;
+while (*args &amp;&amp; *args != ' ') args++;
+if (*args) { *args = 0; args++; }           // buf = "spawn", args = "sphere Big Moon"
+
+if      (_stricmp(buf, "timescale") == 0) gTimeScale = (float)atof(args);
+else if (_stricmp(buf, "grid") == 0)      gShowGrid  = ParseOnOff(args, gShowGrid);
+else Engine_LogError("Unknown command '%s'. Type 'help'.", buf);</code></pre>
+<p>Supported in the lesson: <code>help</code>, <code>clear</code>, <code>list</code>, <code>spawn &lt;mesh&gt; [name]</code>, <code>delete &lt;name&gt;</code>, <code>select &lt;name&gt;</code>, <code>focus</code>, <code>timescale &lt;x&gt;</code>, <code>pause</code>/<code>grid</code>/<code>wireframe [on|off]</code>, <code>reset</code>.</p>
+<div class="tip"><b>Report errors through the log</b>
+<p>A bad argument should produce a red line that says what was expected, for example <code>spawn: unknown mesh 'cub' (try: spawn cube)</code>. Users learn the commands from the error messages.</p></div>
+
+<h2>History with an InputText callback</h2>
+<p>With <code>CallbackHistory</code>, ImGui calls your function when Up or Down is pressed in the field. You get an <code>ImGuiInputTextCallbackData*</code> that lets you edit the text safely:</p>
+<pre><code class="cpp">static int ConsoleCallback(ImGuiInputTextCallbackData *data)
+{
+    if (data-&gt;EventFlag == ImGuiInputTextFlags_CallbackHistory)
+    {
+        int prev = historyPos;
+        if (data-&gt;EventKey == ImGuiKey_UpArrow)
+        {
+            if (historyPos == -1)    historyPos = historyCount - 1;   // jump to newest
+            else if (historyPos &gt; 0) historyPos--;
+        }
+        else if (data-&gt;EventKey == ImGuiKey_DownArrow)
+        {
+            if (historyPos != -1 &amp;&amp; ++historyPos &gt;= historyCount) historyPos = -1;
+        }
+        if (prev != historyPos)
+        {
+            data-&gt;DeleteChars(0, data-&gt;BufTextLen);                 // replace the whole line
+            if (historyPos &gt;= 0) data-&gt;InsertChars(0, history[historyPos]);
+        }
+    }
+    return 0;
+}</code></pre>
+<div class="warn"><b>Edit through the callback, not your buffer</b>
+<p>While the InputText is active, it keeps its <i>own</i> copy of the text. If you <code>strcpy</code> into your <code>input[]</code> array from outside, the widget will overwrite it next frame. Inside the callback, use <code>DeleteChars</code> and <code>InsertChars</code>. They update the buffer, length, cursor and the widget's internal state together.</p></div>
+<p>Tab completion uses the same callback with <code>EventFlag == ImGuiInputTextFlags_CallbackCompletion</code>. The lesson completes the command name when there's exactly one match, and prints the candidates when there are several.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Today the parser is a chain of <code>if/else</code>. In a growing engine you would turn it into a <b>command registry</b>: a table of <code>{ name, help, function pointer }</code> that any subsystem can add to at start-up (<code>RegisterCommand("r_wireframe", ...)</code>). The same registry then drives <code>help</code>, Tab completion and even a cheat menu. Add console variables ("cvars") that bind a name to a <code>float*</code> or <code>bool*</code>, and the console can tweak any setting in the engine without new UI.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <code>color &lt;r&gt; &lt;g&gt; &lt;b&gt;</code> command that sets the selected entity's colour (use <code>sscanf(args, "%f %f %f", ...)</code> and check that it returned 3).</li>
+    <li>Right-click on the log region should open a context menu with "Clear" and "Copy all".</li>
+    <li>Persist the command history to <code>console_history.txt</code> with <code>fopen</code> in <code>L12_Execute</code>, and load it in <code>Lesson_Init</code>.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. in L12_Execute, before the final else
+else if (_stricmp(cmd, "color") == 0)
+{
+    float r, g, b;
+    if (gSelectedEntity &lt; 0)                            { Engine_LogWarn("color: nothing selected"); return; }
+    if (sscanf(args, "%f %f %f", &amp;r, &amp;g, &amp;b) != 3)      { Engine_LogError("color: expected 3 numbers 0..1"); return; }
+    Entity *e = &amp;gEntities[gSelectedEntity];
+    e-&gt;color[0] = r; e-&gt;color[1] = g; e-&gt;color[2] = b;
+    Engine_Log("color of '%s' = %.2f %.2f %.2f", e-&gt;name, r, g, b);
+}
+
+// 2. new global: static bool L12_copyNextFrame = false;
+// toolbar: the Copy button OR the menu request starts the clipboard capture
+bool copy = ImGui::Button("Copy") || L12_copyNextFrame;
+L12_copyNextFrame = false;
+// inside BeginChild("LogRegion"), after the lines:
+if (ImGui::BeginPopupContextWindow())
+{
+    if (ImGui::MenuItem("Clear"))    Engine_ClearLog();
+    if (ImGui::MenuItem("Copy all")) L12_copyNextFrame = true;   // captured on the next frame
+    ImGui::EndPopup();
+}
+
+// 3.
+// in L12_Execute, after adding to history:
+FILE *f = fopen("console_history.txt", "a");
+if (f) { fprintf(f, "%s\n", buf); fclose(f); }
+// in Lesson_Init:
+FILE *f = fopen("console_history.txt", "r");
+char line[L12_INPUT_SIZE];
+while (f &amp;&amp; fgets(line, sizeof(line), f) &amp;&amp; L12_historyCount &lt; L12_HISTORY_MAX)
+{
+    line[strcspn(line, "\r\n")] = 0;
+    if (line[0]) strcpy(L12_history[L12_historyCount++], line);
+}
+if (f) fclose(f);</code></pre>
+  </details>
+</div>

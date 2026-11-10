@@ -1,0 +1,27 @@
+{
+  "id": "00-welcome",
+  "title": "Welcome to ImGui Lab",
+  "summary": "What Dear ImGui is, why game engines use it for editors and debug tools, and how this platform compiles your code into a real OpenGL window.",
+  "minutes": 8,
+  "hasCode": false,
+  "quiz": [
+    {
+      "q": "What does Dear ImGui actually output each frame?",
+      "options": ["Native Win32 controls (HWND buttons)", "A list of textured triangles that a renderer backend draws", "An HTML page", "A bitmap that is blitted with GDI"],
+      "answer": 1,
+      "explain": "ImGui builds vertex/index buffers (<code>ImDrawData</code>). The OpenGL2 backend draws them on top of your scene."
+    },
+    {
+      "q": "Which two functions must your lesson code define?",
+      "options": ["<code>main()</code> and <code>WndProc()</code>", "<code>Lesson_Init()</code> and <code>Lesson_UI()</code>", "<code>initialize()</code> and <code>display()</code>", "<code>ImGui::Begin()</code> and <code>ImGui::End()</code>"],
+      "answer": 1,
+      "explain": "The engine's <code>OGL.c</code> includes <code>Lesson.inl</code> and calls <code>Lesson_Init()</code> once and <code>Lesson_UI()</code> every frame."
+    },
+    {
+      "q": "You right-drag while the mouse is over an ImGui window. What happens?",
+      "options": ["The camera orbits", "Nothing in the 3D view - ImGui owns the mouse there", "The engine crashes", "The window is deleted"],
+      "answer": 1,
+      "explain": "The engine checks <code>io.WantCaptureMouse</code> and leaves the mouse to the UI when it's over an ImGui window."
+    }
+  ]
+}

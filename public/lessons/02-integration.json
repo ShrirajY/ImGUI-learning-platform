@@ -1,0 +1,33 @@
+{
+  "id": "02-integration",
+  "title": "Integrating ImGui into OGL.c",
+  "summary": "Walk through every IMGUI section of the starter OGL.c: headers, WndProc forwarding, IMGUI_initialize / IMGUI_display / IMGUI_uninitialize, the run.bat build, and common pitfalls.",
+  "minutes": 20,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "Why does run.bat pass <code>/TP</code> when compiling OGL.c?",
+      "options": ["To enable optimisations", "To compile the .c file as C++, because imgui.h is C++", "To link OpenGL32.lib", "To hide the console window"],
+      "answer": 1,
+      "explain": "<code>/TP</code> treats every source file as C++. ImGui uses namespaces, references and default arguments."
+    },
+    {
+      "q": "Where must <code>IMGUI_initialize()</code> be called?",
+      "options": ["Before <code>CreateWindowEx</code>", "In <code>WM_CREATE</code>", "After <code>wglMakeCurrent</code> succeeds", "After the game loop ends"],
+      "answer": 2,
+      "explain": "The OpenGL2 backend creates and deletes GL textures (the font atlas), so ImGui's lifetime must sit inside the GL context's lifetime."
+    },
+    {
+      "q": "What is the correct order inside <code>IMGUI_display()</code>?",
+      "options": ["Render, NewFrame, UI", "ImGui_ImplOpenGL2_NewFrame, ImGui_ImplWin32_NewFrame, ImGui::NewFrame, UI, ImGui::Render, RenderDrawData", "UI, NewFrame, SwapBuffers, Render", "ImGui::NewFrame, backends NewFrame, RenderDrawData, UI"],
+      "answer": 1,
+      "explain": "Backends first, then the core NewFrame, your widgets, Render to build draw data, and finally the renderer backend draws it. All of this happens before SwapBuffers."
+    },
+    {
+      "q": "The UI is drawn but clicks do nothing. What is the most likely cause?",
+      "options": ["StyleColorsDark was not called", "<code>ImGui_ImplWin32_WndProcHandler</code> is not called in WndProc", "<code>/SUBSYSTEM:WINDOWS</code> is missing", "The clear color is black"],
+      "answer": 1,
+      "explain": "Without the WndProc forwarding ImGui never sees mouse or keyboard messages."
+    }
+  ]
+}

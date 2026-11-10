@@ -1,0 +1,151 @@
+<h2>Menus: the editor's command centre</h2>
+<p>A main menu bar is where every editor command lives, so users can discover them. Keyboard shortcuts are the fast path to the same commands. In ImGui a menu is just a popup window full of <code>MenuItem</code>s:</p>
+<pre><code class="cpp">if (ImGui::BeginMainMenuBar())                 // full-width bar at the top of the screen
+{
+    if (ImGui::BeginMenu("File"))              // true while the menu is open
+    {
+        if (ImGui::MenuItem("New Scene", "Ctrl+N")) RequestNewScene();
+        if (ImGui::MenuItem("Quit", "Ctrl+Q"))      Engine_Quit();
+        ImGui::EndMenu();                      // only if BeginMenu returned true
+    }
+    ImGui::EndMainMenuBar();                   // only if BeginMainMenuBar returned true
+}</code></pre>
+
+<h3>MenuItem overloads</h3>
+<table>
+  <tr><th>Call</th><th>Behaviour</th></tr>
+  <tr><td><code>MenuItem("Duplicate", "Ctrl+D")</code></td><td>Returns true when clicked. The second string is <b>display text only</b></td></tr>
+  <tr><td><code>MenuItem("Delete", "Del", false, hasSel)</code></td><td><code>enabled = false</code> greys it out and makes it unclickable</td></tr>
+  <tr><td><code>MenuItem("Grid", NULL, &amp;gShowGrid)</code></td><td><code>bool*</code>: draws a checkmark and toggles the bool for you. Perfect for panel visibility</td></tr>
+  <tr><td><code>BeginMenu("Viewport")</code> inside a menu</td><td>Nested sub-menu</td></tr>
+</table>
+<p>Panel toggles are the classic use of the <code>bool*</code> form. The same bool is passed to <code>Begin("Scene", &amp;showScene)</code>, so the window's [x] button and the View menu both control it:</p>
+<pre><code class="cpp">// View menu
+ImGui::MenuItem("Scene", NULL, &amp;showScene);
+// later
+if (showScene) { ImGui::Begin("Scene", &amp;showScene); /* ... */ ImGui::End(); }</code></pre>
+
+<h3>A menu bar inside a window</h3>
+<pre><code class="cpp">ImGui::Begin("Scene", &amp;showScene, ImGuiWindowFlags_MenuBar);   // 1. request the bar
+if (ImGui::BeginMenuBar())                                    // 2. fill it
+{
+    if (ImGui::BeginMenu("Add")) { /* MenuItems */ ImGui::EndMenu(); }
+    ImGui::EndMenuBar();
+}</code></pre>
+
+<h2>Real keyboard shortcuts</h2>
+<p>The "Ctrl+D" text in a menu does nothing by itself. To make it work, test the key chord every frame, <b>outside</b> the menu (a closed menu's code doesn't run). Dear ImGui 1.90+ has a routing-aware function for this:</p>
+<pre><code class="cpp">const ImGuiInputFlags g = ImGuiInputFlags_RouteGlobal;
+if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, g)) CmdDuplicate();
+if (ImGui::Shortcut(ImGuiKey_Delete, g))            CmdRequestDelete();</code></pre>
+<table>
+  <tr><th>Function</th><th>Notes</th></tr>
+  <tr><td><code>Shortcut(chord, flags)</code></td><td>Registers a route. Only one owner gets the key, and focused windows or active widgets win over global routes. The default route is <code>RouteFocused</code>: it only fires while the current window has focus</td></tr>
+  <tr><td><code>IsKeyChordPressed(chord)</code></td><td>Raw check: were these mods and this key pressed? No routing, no focus checks</td></tr>
+  <tr><td><code>IsKeyPressed(ImGuiKey_X)</code></td><td>Single key, with optional repeat</td></tr>
+</table>
+<div class="warn"><b>Why RouteGlobal?</b>
+<p>After you click in the 3D view, <i>no</i> ImGui window has focus. A plain <code>Shortcut(Ctrl+D)</code> called from <code>Lesson_UI</code> (outside any window) would then never fire. <code>RouteGlobal</code> fires regardless, but focused windows that register the same chord still take priority.</p></div>
+<div class="tip"><b>Don't steal keys from text fields</b>
+<p>Single-key shortcuts like <b>Delete</b>, <b>F</b> or <b>P</b> must not fire while the user is typing an entity name. Skip all shortcuts while <code>ImGui::GetIO().WantTextInput</code> is true. Also skip them while a menu or modal is open: <code>ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup)</code>.</p></div>
+<p>In the lesson, every command is a small function (<code>L10_CmdDuplicate</code>, <code>L10_CmdRequestDelete</code>...) that the menu, the buttons <i>and</i> the shortcut all call. One action, three entry points, one implementation.</p>
+
+<h2>Popups: OpenPopup + BeginPopup</h2>
+<p>A popup is a window that floats on top and closes when you click outside it. You <b>open</b> it once, as an event, and <b>begin</b> it every frame:</p>
+<pre><code class="cpp">if (ImGui::Button("Presets..."))
+    ImGui::OpenPopup("ColorPresets");          // call ONCE, on the click
+
+if (ImGui::BeginPopup("ColorPresets"))         // call EVERY frame; true while open
+{
+    if (ImGui::ColorButton("##red", ImVec4(1, 0, 0, 1)))
+    {
+        SetColor(red);
+        ImGui::CloseCurrentPopup();            // Selectable/MenuItem close automatically, buttons don't
+    }
+    ImGui::EndPopup();
+}</code></pre>
+
+<h2>Modals: confirm dialogs</h2>
+<p><code>BeginPopupModal</code> is a popup that dims the screen and blocks everything else until it is closed. It is the right tool for "are you sure?" questions:</p>
+<pre><code class="cpp">ImGui::SetNextWindowPos(ImGui::GetMainViewport()-&gt;GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+if (ImGui::BeginPopupModal("Delete entity?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+{
+    ImGui::Text("Delete '%s'?\nThis cannot be undone.", gEntities[gSelectedEntity].name);
+    if (ImGui::Button("Delete", ImVec2(120, 0))) { CmdDeleteNow(); ImGui::CloseCurrentPopup(); }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+    ImGui::SetItemDefaultFocus();              // keyboard focus on Cancel = the safe default
+    ImGui::EndPopup();
+}</code></pre>
+<p>Pass a <code>bool*</code> as the second argument to get a close [x] in the title bar, as in the About box. Modals don't close on Escape by default, so the lesson checks <code>IsKeyPressed(ImGuiKey_Escape)</code> inside each modal.</p>
+
+<h2>The OpenPopup ID gotcha</h2>
+<p>This catches everyone once. A popup's name is hashed with the <b>current ID stack</b>, exactly like a widget label. <code>OpenPopup("X")</code> and <code>BeginPopup("X")</code> only refer to the same popup if they are called with the same ID stack.</p>
+<pre><code class="cpp">// BROKEN: OpenPopup runs inside the "Help" menu window (different ID stack)
+if (ImGui::BeginMenu("Help"))
+{
+    if (ImGui::MenuItem("About")) ImGui::OpenPopup("About");   // ID hashed inside the menu's own window
+    ImGui::EndMenu();
+}
+// ... top level
+if (ImGui::BeginPopupModal("About")) { ... }                   // different ID stack -&gt; never opens</code></pre>
+<pre><code class="cpp">// FIXED: the menu only sets a request flag; open + begin happen side by side
+if (ImGui::MenuItem("About")) reqAbout = true;
+// ... top level
+if (reqAbout) { ImGui::OpenPopup("About"); reqAbout = false; }
+if (ImGui::BeginPopupModal("About")) { ... }</code></pre>
+<p>The same thing happens with <code>PushID(i)</code> loops: an OpenPopup inside a row loop and a BeginPopup after the loop won't match. The request-flag pattern also lets shortcuts open the same modal, since the Delete key handler has no window at all.</p>
+
+<h2>Tooltips</h2>
+<pre><code class="cpp">ImGui::Button("Duplicate");
+ImGui::SetItemTooltip("Ctrl+D");               // text tooltip for the previous item
+
+ImGui::Selectable(e-&gt;name, selected);
+if (ImGui::BeginItemTooltip())                 // rich tooltip: any widgets
+{
+    ImGui::ColorButton("##c", ImVec4(e-&gt;color[0], e-&gt;color[1], e-&gt;color[2], 1), 0, ImVec2(40, 40));
+    ImGui::SameLine();
+    ImGui::Text("Mesh: %s\nPos: %.1f %.1f %.1f", gMeshNames[e-&gt;mesh], e-&gt;position[0], e-&gt;position[1], e-&gt;position[2]);
+    ImGui::EndTooltip();                       // only if BeginItemTooltip returned true
+}</code></pre>
+<p><code>SetItemTooltip</code> and <code>BeginItemTooltip</code> use a short hover delay and require the mouse to be stationary (<code>ImGuiHoveredFlags_ForTooltip</code>), so tooltips don't flicker as you sweep across a list. <code>BeginTooltip()</code> with no condition shows one immediately. Use it for things like a drag-and-drop preview.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>The "unsaved changes" flag (<code>L10_dirty</code>) is set by every command and every widget that returns true. That one bool drives the menu bar status, the Reset confirmation and, later, the window title asterisk and the "quit without saving?" prompt. Notice that the modal only appears when there is something to lose. Asking every time trains users to click "Yes" without reading.</p></div>
+<div class="note"><b>Camera keys</b>
+<p>The engine moves the camera with WASD when ImGui doesn't want the keyboard. Holding Ctrl+D therefore also nudges the camera right. A real editor would skip camera movement while Ctrl is held, or only move the camera while the right mouse button is down.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add <b>Edit &gt; Select Next</b> with the shortcut <b>Ctrl+Right</b>, wrapping around at the end of the list. (Why not Tab? ImGui already uses Tab for keyboard navigation.)</li>
+    <li>Show an asterisk in the Scene window's title when the scene is dirty, without losing the window's position. Hint: <code>"Scene *###Scene"</code>. Everything after <code>###</code> is the ID.</li>
+    <li>Add a <b>Quit</b> confirmation modal that only appears when <code>L10_dirty</code> is true, used by both File &gt; Quit and Ctrl+Q.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. in L10_Shortcuts()
+if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_RightArrow, g) &amp;&amp; gEntityCount &gt; 0)
+    gSelectedEntity = (gSelectedEntity + 1) % gEntityCount;
+
+// 2. in L10_ScenePanel()
+const char *title = L10_dirty ? "Scene *###Scene" : "Scene###Scene";
+if (!ImGui::Begin(title, &amp;L10_showScene, ImGuiWindowFlags_MenuBar)) { ImGui::End(); return; }
+
+// 3.
+static bool L10_reqQuitModal = false;
+static void L10_CmdRequestQuit(void) { if (L10_dirty) L10_reqQuitModal = true; else Engine_Quit(); }
+// File menu + shortcut call L10_CmdRequestQuit() instead of Engine_Quit()
+// in L10_Modals():
+if (L10_reqQuitModal) { ImGui::OpenPopup("Quit?"); L10_reqQuitModal = false; }
+L10_CenterNextWindow();
+if (ImGui::BeginPopupModal("Quit?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+{
+    ImGui::Text("Quit without saving?");
+    if (ImGui::Button("Quit")) Engine_Quit();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    ImGui::SetItemDefaultFocus();
+    ImGui::EndPopup();
+}</code></pre>
+  </details>
+</div>

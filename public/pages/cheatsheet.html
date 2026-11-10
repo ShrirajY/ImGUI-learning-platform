@@ -1,0 +1,160 @@
+<h1>ImGui Cheat Sheet</h1>
+<p class="lead">The calls you'll use most, grouped by job. Version: Dear ImGui 1.92.0 WIP (master branch).</p>
+
+<h2>Frame skeleton</h2>
+<pre><code class="cpp">// init (after GL context)
+IMGUI_CHECKVERSION();
+ImGui::CreateContext();
+ImGui::StyleColorsDark();
+ImGui_ImplWin32_InitForOpenGL(hwnd);
+ImGui_ImplOpenGL2_Init();
+
+// every frame
+ImGui_ImplOpenGL2_NewFrame();
+ImGui_ImplWin32_NewFrame();
+ImGui::NewFrame();
+    /* ... your UI ... */
+ImGui::Render();
+ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+SwapBuffers(hdc);
+
+// shutdown (before deleting GL context)
+ImGui_ImplOpenGL2_Shutdown();
+ImGui_ImplWin32_Shutdown();
+ImGui::DestroyContext();</code></pre>
+
+<h2>Windows</h2>
+<pre><code class="cpp">ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+ImGui::SetNextWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+if (ImGui::Begin("Inspector", &amp;open, ImGuiWindowFlags_MenuBar)) { /* widgets */ }
+ImGui::End();                                   // always
+
+ImGui::BeginChild("scroll", ImVec2(0, 200), ImGuiChildFlags_Borders); /* ... */ ImGui::EndChild();</code></pre>
+
+<h2>Text</h2>
+<pre><code class="cpp">ImGui::Text("FPS: %.1f", ImGui::GetIO().Framerate);
+ImGui::TextColored(ImVec4(1, 0.5f, 0, 1), "Warning");
+ImGui::TextDisabled("(hint)");   ImGui::TextWrapped("Long text...");
+ImGui::TextUnformatted(userString);  ImGui::BulletText("Item");
+ImGui::SeparatorText("Section");     ImGui::LabelText("Label", "%d", value);</code></pre>
+
+<h2>Buttons &amp; toggles</h2>
+<pre><code class="cpp">if (ImGui::Button("Play")) { }        ImGui::SmallButton("x");
+if (ImGui::Button("Wide", ImVec2(-FLT_MIN, 0))) { }        // full width
+ImGui::Checkbox("Visible", &amp;e.visible);
+ImGui::RadioButton("Local", &amp;space, 0); ImGui::SameLine(); ImGui::RadioButton("World", &amp;space, 1);
+ImGui::ArrowButton("##left", ImGuiDir_Left);
+ImGui::BeginDisabled(!canSave); ImGui::Button("Save"); ImGui::EndDisabled();</code></pre>
+
+<h2>Numbers &amp; text input</h2>
+<pre><code class="cpp">ImGui::SliderFloat("FOV", &amp;fov, 20, 120, "%.0f deg");
+ImGui::SliderInt("Count", &amp;n, 0, 100);
+ImGui::DragFloat("Speed", &amp;speed, 0.1f, 0.0f, 50.0f);
+ImGui::DragFloat3("Position", e.position, 0.05f);
+ImGui::InputFloat("Mass", &amp;mass, 0.1f, 1.0f, "%.2f");
+ImGui::InputInt("Layer", &amp;layer);
+ImGui::InputText("Name", e.name, sizeof(e.name));
+ImGui::InputTextMultiline("##script", buf, sizeof(buf), ImVec2(-FLT_MIN, 200));
+// Undo-friendly: commit once when the user finishes editing
+if (ImGui::IsItemDeactivatedAfterEdit()) PushUndo();</code></pre>
+
+<h2>Colors</h2>
+<pre><code class="cpp">ImGui::ColorEdit3("Albedo", e.color);
+ImGui::ColorEdit4("Tint", rgba, ImGuiColorEditFlags_AlphaBar);
+ImGui::ColorPicker3("##pick", col, ImGuiColorEditFlags_PickerHueWheel);
+ImGui::ColorButton("##swatch", ImVec4(1, 0, 0, 1));
+ImU32 c = IM_COL32(255, 128, 0, 255);   ImU32 c2 = ImGui::ColorConvertFloat4ToU32(v4);</code></pre>
+
+<h2>Selection &amp; lists</h2>
+<pre><code class="cpp">ImGui::Combo("Mesh", &amp;e.mesh, gMeshNames, MESH_COUNT);
+if (ImGui::BeginCombo("Texture", preview)) {
+    for (int i = 0; i &lt; n; i++)
+        if (ImGui::Selectable(names[i], i == cur)) cur = i;
+    ImGui::EndCombo();
+}
+if (ImGui::Selectable("Item", selected)) { }
+if (ImGui::BeginListBox("##list")) { /* Selectables */ ImGui::EndListBox(); }
+static ImGuiTextFilter filter; filter.Draw("Search"); if (filter.PassFilter(name)) { }</code></pre>
+
+<h2>Trees, headers, tabs</h2>
+<pre><code class="cpp">if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) { }
+if (ImGui::TreeNode("Children")) { /* ... */ ImGui::TreePop(); }
+ImGuiTreeNodeFlags f = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth
+                     | (selected ? ImGuiTreeNodeFlags_Selected : 0);
+bool open = ImGui::TreeNodeEx((void*)(intptr_t)id, f, "%s", name);
+if (ImGui::IsItemClicked()) select(id);
+if (ImGui::BeginTabBar("tabs")) { if (ImGui::BeginTabItem("Scene")) { ImGui::EndTabItem(); } ImGui::EndTabBar(); }</code></pre>
+
+<h2>Layout</h2>
+<pre><code class="cpp">ImGui::SameLine();  ImGui::SameLine(150);   ImGui::Separator();  ImGui::Spacing();
+ImGui::Indent();  ImGui::Unindent();       ImGui::Dummy(ImVec2(0, 10));
+ImGui::BeginGroup(); /* ... */ ImGui::EndGroup();
+ImGui::SetNextItemWidth(120);  ImGui::PushItemWidth(-FLT_MIN); ImGui::PopItemWidth();
+ImVec2 avail = ImGui::GetContentRegionAvail();
+ImGui::AlignTextToFramePadding();          // align text with framed widgets on the same line</code></pre>
+
+<h2>IDs</h2>
+<pre><code class="cpp">ImGui::Button("Delete##entity3");          // label "Delete", unique id
+ImGui::Button("Play###playbtn");           // id stays "playbtn" even if label text changes
+for (int i = 0; i &lt; n; i++) { ImGui::PushID(i); ImGui::Button("Delete"); ImGui::PopID(); }</code></pre>
+
+<h2>Menus, popups, tooltips</h2>
+<pre><code class="cpp">if (ImGui::BeginMainMenuBar()) {
+    if (ImGui::BeginMenu("Edit")) {
+        if (ImGui::MenuItem("Duplicate", "Ctrl+D")) { }
+        ImGui::MenuItem("Show grid", NULL, &amp;gShowGrid);
+        ImGui::EndMenu();
+    }
+    ImGui::EndMainMenuBar();
+}
+if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D)) { /* duplicate */ }
+if (ImGui::BeginPopupContextItem()) { if (ImGui::MenuItem("Delete")) { } ImGui::EndPopup(); }
+if (ImGui::Button("Reset")) ImGui::OpenPopup("Confirm");
+if (ImGui::BeginPopupModal("Confirm", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (ImGui::Button("OK")) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+}
+ImGui::SetItemTooltip("Explains the previous item");</code></pre>
+
+<h2>Tables</h2>
+<pre><code class="cpp">if (ImGui::BeginTable("t", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_Sortable)) {
+    ImGui::TableSetupColumn("Name"); ImGui::TableSetupColumn("Mesh"); ImGui::TableSetupColumn("Visible");
+    ImGui::TableHeadersRow();
+    for (int i = 0; i &lt; n; i++) { ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::Text("%s", ...); }
+    ImGui::EndTable();
+}</code></pre>
+
+<h2>Plots, images, drawing</h2>
+<pre><code class="cpp">ImGui::PlotLines("ms", gFrameTimes, FRAME_HISTORY, gFrameTimeOffset, NULL, 0, 33, ImVec2(0, 60));
+ImGui::ProgressBar(0.6f, ImVec2(-FLT_MIN, 0), "Loading");
+ImGui::Image((ImTextureID)(intptr_t)glTex, ImVec2(64, 64));
+if (ImGui::ImageButton("##tex", (ImTextureID)(intptr_t)glTex, ImVec2(48, 48))) { }
+ImDrawList *dl = ImGui::GetWindowDrawList();      // or GetForegroundDrawList()
+dl-&gt;AddLine(a, b, IM_COL32(255, 0, 0, 255), 2.0f);
+dl-&gt;AddCircleFilled(center, 6.0f, IM_COL32_WHITE);
+dl-&gt;AddText(pos, IM_COL32(255, 255, 0, 255), "label");</code></pre>
+
+<h2>Input &amp; drag-drop</h2>
+<pre><code class="cpp">ImGuiIO &amp;io = ImGui::GetIO();
+if (!io.WantCaptureMouse)    { /* game/camera gets the mouse */ }
+if (!io.WantCaptureKeyboard) { /* game gets the keyboard */ }
+ImGui::IsItemHovered(); ImGui::IsItemActive(); ImGui::IsMouseDoubleClicked(0); ImGui::IsKeyPressed(ImGuiKey_Delete);
+if (ImGui::BeginDragDropSource()) { ImGui::SetDragDropPayload("MESH", &amp;mesh, sizeof(int)); ImGui::Text("Mesh"); ImGui::EndDragDropSource(); }
+if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload("MESH")) { int m = *(const int*)p-&gt;Data; }
+    ImGui::EndDragDropTarget();
+}</code></pre>
+
+<h2>Style &amp; fonts</h2>
+<pre><code class="cpp">ImGuiStyle &amp;s = ImGui::GetStyle();
+s.WindowRounding = 6; s.FrameRounding = 4; s.Colors[ImGuiCol_Header] = ImVec4(0.2f, 0.4f, 0.8f, 1);
+ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1)); ImGui::Button("Danger"); ImGui::PopStyleColor();
+ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 6)); /* ... */ ImGui::PopStyleVar();
+ImFont *big = ImGui::GetIO().Fonts-&gt;AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 24.0f);  // in init
+ImGui::PushFont(big); ImGui::Text("Heading"); ImGui::PopFont();</code></pre>
+
+<h2>Debug tools</h2>
+<pre><code class="cpp">ImGui::ShowDemoWindow();        // every widget, with source in imgui_demo.cpp
+ImGui::ShowMetricsWindow();     // draw calls, windows, Item Picker
+ImGui::ShowIDStackToolWindow(); // find ID conflicts
+ImGui::ShowStyleEditor();       // live theme editing</code></pre>

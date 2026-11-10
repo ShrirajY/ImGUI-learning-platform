@@ -1,0 +1,163 @@
+<h2>One mouse, two consumers</h2>
+<p>Your engine and ImGui both want the same mouse and keyboard. When the user right-drags over the Inspector, they mean to scroll or edit, not to orbit the camera. When they press <kbd>W</kbd> inside a text field, they are typing, not moving forward. ImGui solves this with two flags it recomputes every frame:</p>
+<table>
+  <tr><th>Flag</th><th>True when...</th><th>Your engine should...</th></tr>
+  <tr><td><code>io.WantCaptureMouse</code></td><td>the mouse is over an ImGui window, or a drag that started in ImGui is still going</td><td>skip camera orbit, picking and wheel zoom</td></tr>
+  <tr><td><code>io.WantCaptureKeyboard</code></td><td>an item that takes keyboard input is active (e.g. a text field) or a modal is open. If you enable <code>ImGuiConfigFlags_NavEnableKeyboard</code>, it is also true whenever any ImGui window has focus, which is why the ImGui Lab engine leaves keyboard navigation off</td><td>skip WASD, hotkeys and gameplay keys</td></tr>
+  <tr><td><code>io.WantTextInput</code></td><td>a text field is being edited</td><td>definitely don't treat keys as commands</td></tr>
+</table>
+<div class="note"><b>"Why does WASD stop working after I click a window?"</b>
+<p>With keyboard navigation enabled, a focused ImGui window owns the keyboard, so arrow keys and Tab can move between widgets. Click empty space in the 3D view and ImGui drops focus, giving the keyboard back to the engine. Watch the Input State window while you try it. For editor hotkeys that should work while a panel is focused but not while typing (like <kbd>Ctrl</kbd>+<kbd>D</kbd>), test <code>!io.WantTextInput</code> instead. The capstone lesson does exactly that.</p></div>
+<p>That is exactly what the mini engine does in <code>UpdateCamera()</code> in OGL.c:</p>
+<pre><code class="cpp">static void UpdateCamera(float dt)
+{
+    ImGuiIO &amp;io = ImGui::GetIO();
+    if (!io.WantCaptureMouse)            // the mouse belongs to the 3D view
+    {
+        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right, 0.0f)) { /* orbit */ }
+        if (io.MouseWheel != 0.0f)                                { /* zoom  */ }
+        if (gEnablePicking &amp;&amp; ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            gSelectedEntity = PickEntity(io.MousePos.x, io.MousePos.y);
+    }
+    if (!io.WantCaptureKeyboard)         // the keyboard belongs to the game
+    {
+        if (ImGui::IsKeyDown(ImGuiKey_W)) { /* move forward */ }
+        ...
+    }
+}</code></pre>
+<p>The same check sits in <code>WndProc</code> before ESC quits the app, so pressing ESC to cancel a text edit doesn't close the window.</p>
+
+<div class="note"><b>Why the engine runs UpdateCamera AFTER Lesson_UI</b>
+<p><code>WantCaptureMouse</code> is decided from which windows exist and where they are. Calling the camera code after your UI is submitted means the flags describe this frame's layout. Order it the other way round and a click on a window that just opened could fall through and select an entity behind it.</p></div>
+
+<div class="warn"><b>Don't use IsWindowHovered() for this</b>
+<p><code>IsWindowHovered()</code> only tells you about the <i>current</i> window. Use the <code>io.WantCapture*</code> flags to decide whether input goes to ImGui or the engine. They also handle popups, active drags and keyboard focus.</p></div>
+
+<h2>Asking about the last item</h2>
+<p>Every widget becomes the "last item", and a set of query functions describes how the user is interacting with it. Call them <b>right after</b> the widget:</p>
+<table>
+  <tr><th>Function</th><th>Meaning</th></tr>
+  <tr><td><code>IsItemHovered()</code></td><td>mouse is over it (and not blocked by a popup)</td></tr>
+  <tr><td><code>IsItemActive()</code></td><td>being held or edited <i>right now</i>; true every frame of a drag</td></tr>
+  <tr><td><code>IsItemClicked(button)</code></td><td>hovered and clicked this frame; works on any item, any button</td></tr>
+  <tr><td><code>IsItemDeactivatedAfterEdit()</code></td><td>user just finished editing (great for undo)</td></tr>
+  <tr><td><code>IsWindowHovered()</code> / <code>IsWindowFocused()</code></td><td>same idea for the current window</td></tr>
+</table>
+<pre><code class="cpp">if (ImGui::Selectable(e-&gt;name, gSelectedEntity == i))
+    gSelectedEntity = i;
+if (ImGui::IsItemHovered() &amp;&amp; ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+    Engine_FocusEntity(i);           // double-click a row = frame it in the 3D view</code></pre>
+
+<h3>Raw mouse and keys</h3>
+<ul>
+  <li><code>io.MousePos</code>, <code>io.MouseDelta</code>, <code>io.MouseDown[0..4]</code>, <code>io.MouseWheel</code> give you the raw mouse state in screen pixels.</li>
+  <li><code>ImGui::IsKeyPressed(ImGuiKey_F, false)</code> is true for one frame. Pass <code>false</code> to ignore auto-repeat. <code>IsKeyDown</code> is true while the key is held.</li>
+  <li><code>ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_D)</code> handles modifier combos.</li>
+</ul>
+<pre><code class="cpp">if (!io.WantCaptureKeyboard &amp;&amp; ImGui::IsKeyPressed(ImGuiKey_Delete, false) &amp;&amp; gSelectedEntity &gt;= 0)
+    Engine_RemoveEntity(gSelectedEntity);   // editor hotkey that is silent while typing</code></pre>
+
+<h2>InvisibleButton: your own interactive area</h2>
+<p><code>InvisibleButton(id, size)</code> takes up layout space and behaves like a button (hover, active, click), but draws nothing. Put it down, query it, then draw whatever you like on top with the draw list (lesson 15 covers this properly). This is how you make touch pads, timelines, curve editors and viewport widgets:</p>
+<pre><code class="cpp">ImVec2 p = ImGui::GetCursorScreenPos();
+ImGui::InvisibleButton("##pad", ImVec2(200, 70));
+if (ImGui::IsItemActive())                                     // held down
+    gEntities[gSelectedEntity].rotation[1] += io.MouseDelta.x;  // drag to rotate
+ImGui::GetWindowDrawList()-&gt;AddRectFilled(p, ImVec2(p.x + 200, p.y + 70), IM_COL32(80, 160, 255, 60));</code></pre>
+<p>While the invisible button is held, <code>WantCaptureMouse</code> stays true even if the cursor leaves the window. The camera won't suddenly start orbiting halfway through your drag.</p>
+
+<h2>Drag and drop</h2>
+<p>ImGui's drag and drop needs only two small blocks of code. A <b>source</b> goes right after the item you drag from, and a <b>target</b> goes right after the item you drop onto. They are matched by a <b>payload type</b> string:</p>
+<div class="tabs">
+  <div class="tab-btns"><button class="tab-btn on">Source</button><button class="tab-btn">Target</button></div>
+  <div class="tab-pane on">
+<pre><code class="cpp">ImGui::Button(gMeshNames[m]);
+if (ImGui::BeginDragDropSource())                       // true while this item is dragged
+{
+    ImGui::SetDragDropPayload("MESH_TYPE", &amp;m, sizeof(int));  // ImGui COPIES the bytes
+    ImGui::Text("Mesh: %s", gMeshNames[m]);             // anything here = drag tooltip
+    ImGui::EndDragDropSource();
+}</code></pre>
+  </div>
+  <div class="tab-pane">
+<pre><code class="cpp">ImGui::Selectable(e-&gt;name, selected);
+if (ImGui::BeginDragDropTarget())                       // true while something hovers it
+{
+    if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload("MESH_TYPE"))
+        e-&gt;mesh = *(const int *)p-&gt;Data;                // only on mouse release
+    ImGui::EndDragDropTarget();
+}</code></pre>
+  </div>
+</div>
+<ul>
+  <li><b>Payload types</b> are strings of up to 32 characters. A target only lights up for types it accepts, so <code>"MESH_TYPE"</code> can never be dropped where you expect an <code>"ENTITY_INDEX"</code>.</li>
+  <li><b>Payload data is copied</b>. Send small values (indices, IDs, handles), not pointers into arrays that might move.</li>
+  <li>A target can call <code>AcceptDragDropPayload</code> several times with different types.</li>
+  <li><code>ImGui::GetDragDropPayload()</code> lets <i>any</i> code peek at what is being dragged. The lesson uses it to highlight the spawn zone while a mesh is in flight.</li>
+</ul>
+
+<h3>Built-in colour payloads</h3>
+<p><code>ColorButton</code>, <code>ColorEdit3/4</code> and <code>ColorPicker</code> are already drag sources and drop targets. They use the reserved types <code>IMGUI_PAYLOAD_TYPE_COLOR_3F</code> (<code>"_COL3F"</code>, float[3]) and <code>IMGUI_PAYLOAD_TYPE_COLOR_4F</code> (<code>"_COL4F"</code>, float[4]). Accept those in your own targets and any colour widget in your editor can paint entities:</p>
+<pre><code class="cpp">if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload(IMGUI_PAYLOAD_TYPE_COLOR_4F))
+    memcpy(e-&gt;color, p-&gt;Data, sizeof(float) * 4);</code></pre>
+
+<h3>Drag to reorder</h3>
+<p>Make each row both a source and a target of <code>"ENTITY_INDEX"</code>. On drop, <b>record</b> the move and apply it after the loop. Shuffling the array while you are still drawing it would give you a frame of mixed-up rows and stale IDs.</p>
+<pre><code class="cpp">static int moveFrom = -1, moveTo = -1;
+for (int i = 0; i &lt; gEntityCount; i++)
+{
+    ImGui::PushID(i);
+    ImGui::Selectable(gEntities[i].name);
+    if (ImGui::BeginDragDropSource()) { ImGui::SetDragDropPayload("ENTITY_INDEX", &amp;i, sizeof(int)); ImGui::EndDragDropSource(); }
+    if (ImGui::BeginDragDropTarget())
+    {
+        if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload("ENTITY_INDEX"))
+        { moveFrom = *(const int *)p-&gt;Data; moveTo = i; }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::PopID();
+}
+if (moveFrom &gt;= 0) { MoveEntity(moveFrom, moveTo); moveFrom = moveTo = -1; }</code></pre>
+
+<div class="tip"><b>Only call EndDragDrop* if Begin returned true</b>
+<p>Unlike <code>Begin()/End()</code> for windows, <code>EndDragDropSource()</code> and <code>EndDragDropTarget()</code> must only be called inside the <code>if</code>.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Drag and drop is how most editor work gets done. You drag a mesh from the content browser into the scene, a material onto a model, a prefab into the hierarchy to parent it, or a sound onto a component slot. Name your payload types after your engine's asset types (<code>"ASSET_MESH"</code>, <code>"ASSET_TEXTURE"</code>, <code>"ENTITY_ID"</code>) and send stable IDs or GUIDs, never raw pointers. The input-capture rule matters just as much: an editor where the camera spins while you drag a slider gets abandoned quickly. Route all of your engine's input through one place that checks <code>WantCaptureMouse/Keyboard</code>.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Make the <b>Spawn here</b> zone also accept an <code>"ENTITY_INDEX"</code> payload and duplicate that entity with <code>Engine_DuplicateEntity</code>.</li>
+    <li>Add a "trash can" button at the bottom of the Scene window. Dropping an entity row on it removes the entity. Tint it red only while an <code>"ENTITY_INDEX"</code> payload is being dragged (use <code>GetDragDropPayload()</code>).</li>
+    <li>Add <kbd>Ctrl</kbd>+<kbd>D</kbd> to duplicate the selected entity. It should work while a panel is focused but not while typing, so test <code>io.WantTextInput</code> instead of <code>WantCaptureKeyboard</code>. Try it with the text field active.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) inside the spawn zone's BeginDragDropTarget() block
+if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload(L13_PAYLOAD_ENTITY))
+{
+    int copy = Engine_DuplicateEntity(*(const int *)p-&gt;Data);
+    if (copy &gt;= 0) gSelectedEntity = copy;
+}
+
+// 2) trash can
+const ImGuiPayload *dragging = ImGui::GetDragDropPayload();
+bool entityInFlight = dragging &amp;&amp; dragging-&gt;IsDataType(L13_PAYLOAD_ENTITY);
+if (entityInFlight) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.15f, 0.15f, 1.0f));
+ImGui::Button("Trash (drop entity)", ImVec2(-FLT_MIN, 30));
+if (entityInFlight) ImGui::PopStyleColor();
+if (ImGui::BeginDragDropTarget())
+{
+    if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload(L13_PAYLOAD_ENTITY))
+        Engine_RemoveEntity(*(const int *)p-&gt;Data);
+    ImGui::EndDragDropTarget();
+}
+
+// 3) in L13_InputState(), outside the WantCaptureKeyboard block
+if (!io.WantTextInput &amp;&amp; ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_D) &amp;&amp; gSelectedEntity &gt;= 0)
+{
+    int copy = Engine_DuplicateEntity(gSelectedEntity);
+    if (copy &gt;= 0) gSelectedEntity = copy;
+}</code></pre>
+  </details>
+</div>

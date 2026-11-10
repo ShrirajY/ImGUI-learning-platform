@@ -1,0 +1,27 @@
+{
+  "id": "05-colors",
+  "title": "Colors & Color Pickers",
+  "summary": "ColorEdit3/4, ColorPicker, ColorButton palettes, the important flags, and converting between float arrays, ImVec4 and packed ImU32.",
+  "minutes": 15,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "Which widget is best for a clickable palette swatch that applies a preset color?",
+      "options": ["<code>ColorEdit4</code>", "<code>ColorPicker3</code>", "<code>ColorButton</code>", "<code>TextColored</code>"],
+      "answer": 2,
+      "explain": "<code>ColorButton</code> displays an <code>ImVec4</code> and returns true when clicked. It never edits data itself."
+    },
+    {
+      "q": "What does <code>IM_COL32(255, 128, 0, 255)</code> produce?",
+      "options": ["An ImVec4 of floats", "A packed ImU32 used by draw lists", "A float[4] array", "A GL texture"],
+      "answer": 1,
+      "explain": "<code>IM_COL32</code> packs four 0..255 channels into one 32-bit <code>ImU32</code>, the format <code>ImDrawList</code> uses."
+    },
+    {
+      "q": "You want a light color that can go above 1.0 (overbright). Which flags?",
+      "options": ["<code>NoInputs | NoLabel</code>", "<code>Float | HDR</code>", "<code>AlphaBar</code>", "<code>DisplayHex</code>"],
+      "answer": 1,
+      "explain": "<code>HDR</code> removes the 0..1 limit and <code>Float</code> shows the real float values."
+    }
+  ]
+}

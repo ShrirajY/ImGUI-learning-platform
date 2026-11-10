@@ -1,0 +1,33 @@
+{
+  "id": "06-ids",
+  "title": "The ID Stack",
+  "summary": "Why identical labels collide, ## and ### labels, PushID/PopID in loops, GetID, and debugging with the ID Stack Tool. Essential for every entity list and inspector.",
+  "minutes": 18,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "A loop creates <code>Button(\"Select\")</code> for every entity in one window. What is wrong?",
+      "options": ["Nothing", "All buttons share one ID, so clicks go to the wrong row", "Only the last button is drawn", "It doesn't compile"],
+      "answer": 1,
+      "explain": "The ID is hash(ID stack + label). Same window + same label = same ID. Wrap the loop body in <code>PushID(i)</code>/<code>PopID()</code>."
+    },
+    {
+      "q": "What does <code>Button(\"Delete##comp\")</code> display?",
+      "options": ["Delete##comp", "Delete", "comp", "Nothing"],
+      "answer": 1,
+      "explain": "Text after <code>##</code> is hashed into the ID but not displayed."
+    },
+    {
+      "q": "Your window title is <code>\"Inspector - %s\"</code> with the selected entity name, and the window jumps every time the selection changes. Fix?",
+      "options": ["Use <code>\"Inspector - %s##Inspector\"</code>", "Use <code>\"Inspector - %s###Inspector\"</code>", "Call SetNextWindowPos every frame", "Use PushID before Begin"],
+      "answer": 1,
+      "explain": "With <code>###</code> only the part after it forms the ID, so the window keeps its identity, position and size."
+    },
+    {
+      "q": "Why is a permanent entity UID better than the loop index for <code>PushID</code>?",
+      "options": ["It's faster to hash", "Deleting or reordering entities doesn't move UI state (open nodes, active fields) to a different entity", "ImGui requires it", "Indices can't be pushed"],
+      "answer": 1,
+      "explain": "Index IDs follow the row position. A stable UID follows the object itself."
+    }
+  ]
+}

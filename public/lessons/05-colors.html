@@ -1,0 +1,118 @@
+<p class="lead">Colors are everywhere in an engine: sky, lights, materials, gizmos, debug lines. ImGui's color widgets edit plain <code>float</code> arrays in the 0..1 range, which is exactly what <code>glColor4fv</code> and <code>glLightfv</code> expect.</p>
+
+<h2>ColorEdit3 and ColorEdit4</h2>
+<pre><code class="cpp">bool ColorEdit3(const char* label, float col[3], ImGuiColorEditFlags flags = 0);
+bool ColorEdit4(const char* label, float col[4], ImGuiColorEditFlags flags = 0);</code></pre>
+<p>A <code>ColorEdit</code> is a compact row: R, G and B (and A) drag boxes, a color square, and the label. Click the square to open a full picker popup. <b>Right-click</b> it for an options menu (RGB/HSV/Hex, 0..255 or 0..1). Like every widget it returns <code>true</code> when the color changed.</p>
+<pre><code class="cpp">ImGui::ColorEdit3("Clear color", gClearColor);      // float[4] array, edits only the first 3
+ImGui::ColorEdit3("Light color", gLight.color);     // float[3]
+ImGui::ColorEdit4("Albedo",      e-&gt;color);         // float[4] RGBA, alpha used for blending</code></pre>
+<div class="mock">
+  <div class="mock-title">Environment</div>
+  <div class="mock-body">
+    <div class="mock-row"><span class="mock-frame">R:23</span><span class="mock-frame">G:26</span><span class="mock-frame">B:31</span><span class="mock-check" style="background:#171a1f"></span> Clear color</div>
+    <div class="mock-row"><span class="mock-frame">R:255</span><span class="mock-frame">G:247</span><span class="mock-frame">B:230</span><span class="mock-check" style="background:#fff7e6"></span> Light color</div>
+  </div>
+</div>
+
+<h2>ColorPicker3 / ColorPicker4</h2>
+<p>A picker is the big square or wheel, embedded directly in the window instead of in a popup. Use it when color editing is the main task of a panel:</p>
+<pre><code class="cpp">ImGui::ColorPicker3("##wheel", gLight.color, ImGuiColorEditFlags_PickerHueWheel);
+ImGui::ColorPicker4("Tint", tint, ImGuiColorEditFlags_AlphaBar, originalTint);  // last arg: "before" swatch</code></pre>
+
+<h2>ColorButton: a clickable swatch</h2>
+<pre><code class="cpp">bool ColorButton(const char* desc_id, const ImVec4&amp; col, ImGuiColorEditFlags flags = 0,
+                 const ImVec2&amp; size = ImVec2(0, 0));</code></pre>
+<p><code>ColorButton</code> only <i>shows</i> a color and returns <code>true</code> when clicked. It takes an <code>ImVec4</code> by value, so it never edits anything itself. That makes it the building block for palettes, recent-color lists and material thumbnails:</p>
+<pre><code class="cpp">if (ImGui::ColorButton("Red", ImVec4(0.9f, 0.2f, 0.2f, 1.0f), 0, ImVec2(24, 24)))
+{
+    e-&gt;color[0] = 0.9f; e-&gt;color[1] = 0.2f; e-&gt;color[2] = 0.2f;
+}</code></pre>
+<div class="warn"><b>Palettes need unique IDs</b>
+<p>In a loop, don't give every swatch the same <code>desc_id</code>. Format a unique one (<code>"Swatch 3"</code>) or wrap each one in <code>PushID(i)</code>/<code>PopID()</code>. Lesson 06 explains why.</p></div>
+
+<h2>Useful flags</h2>
+<table>
+  <tr><th>Flag</th><th>Effect</th></tr>
+  <tr><td><code>ImGuiColorEditFlags_NoInputs</code></td><td>Only the color square, no R/G/B boxes. Compact for tables and inspectors.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_NoLabel</code></td><td>Hide the text label (it still appears in the tooltip and picker).</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_NoAlpha</code></td><td>Ignore alpha (ColorEdit4/ColorButton show RGB only).</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_AlphaBar</code></td><td>Show an alpha slider in the picker.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_Float</code></td><td>Display 0.000..1.000 instead of 0..255.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_HDR</code></td><td>Allow values above 1.0. Combine with <code>_Float</code> for "overbright" lights.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_DisplayHSV</code> / <code>_DisplayHex</code></td><td>Edit as Hue/Sat/Value or hex. The data in memory stays RGB.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_PickerHueWheel</code></td><td>Hue wheel + triangle instead of the default hue bar.</td></tr>
+  <tr><td><code>ImGuiColorEditFlags_NoPicker</code> / <code>_NoOptions</code></td><td>Disable the popup picker / right-click menu.</td></tr>
+</table>
+<pre><code class="cpp">ImGui::ColorEdit3("Light", gLight.color, ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR);
+ImGui::ColorEdit4("##c", e-&gt;color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);</code></pre>
+
+<h2>Three ways to store a color</h2>
+<table>
+  <tr><th>Type</th><th>Looks like</th><th>Used by</th></tr>
+  <tr><td><code>float[3]</code> / <code>float[4]</code></td><td><code>{ 0.9f, 0.2f, 0.2f, 1.0f }</code></td><td>Your engine data, <code>ColorEdit</code>, <code>ColorPicker</code>, <code>glColor4fv</code></td></tr>
+  <tr><td><code>ImVec4</code></td><td><code>ImVec4(0.9f, 0.2f, 0.2f, 1.0f)</code></td><td><code>TextColored</code>, <code>ColorButton</code>, style colors (<code>.x .y .z .w</code> = r g b a)</td></tr>
+  <tr><td><code>ImU32</code></td><td><code>IM_COL32(230, 51, 51, 255)</code></td><td>Draw lists (<code>AddLine</code>, <code>AddRectFilled</code>). Packed 8 bits per channel, 0..255.</td></tr>
+</table>
+<p>Conversions:</p>
+<pre><code class="cpp">ImVec4 v   = ImVec4(e-&gt;color[0], e-&gt;color[1], e-&gt;color[2], e-&gt;color[3]);   // float[4] -&gt; ImVec4
+ImU32  u   = ImGui::ColorConvertFloat4ToU32(v);                             // ImVec4 -&gt; ImU32
+ImVec4 back = ImGui::ColorConvertU32ToFloat4(u);                            // ImU32 -&gt; ImVec4
+
+float h, s, val;
+ImGui::ColorConvertRGBtoHSV(e-&gt;color[0], e-&gt;color[1], e-&gt;color[2], h, s, val);  // h,s,v in 0..1
+ImGui::ColorConvertHSVtoRGB(h, s, val, e-&gt;color[0], e-&gt;color[1], e-&gt;color[2]);</code></pre>
+<div class="tip"><b>Pointer tricks</b>
+<p>Because <code>ColorEdit4</code> takes a <code>float*</code>, you can pass <code>&amp;myImVec4.x</code> to edit an <code>ImVec4</code> directly. The four floats are contiguous.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>An environment or lighting panel is often the first thing artists ask for. Sky color, sun color, ambient and fog, with presets like "Day / Sunset / Night", are just ColorEdits pointing at engine globals. Material palettes built from <code>ColorButton</code> become your first "asset" UI. Later, you can drag a swatch onto an entity with drag and drop (lesson 13). ColorButtons are already drag sources by default.</p></div>
+
+<h2>The example code</h2>
+<ul>
+  <li><b>Environment</b>: <code>gClearColor</code>, the light color as an HDR float editor, the ambient color in HSV, an optional embedded hue wheel, and Day/Sunset/Night presets.</li>
+  <li><b>Material</b>: the selected entity's RGBA color with an alpha bar (try alpha 0.4), a 12-swatch <code>ColorButton</code> palette, a compact square-only editor, and live conversions to ImU32, HSV and hex, including "shift hue" and "random color" buttons that use the HSV helpers.</li>
+</ul>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a "Recent" row: every time a palette swatch is applied, remember the color in a <code>static ImVec4 recent[6]</code> ring buffer and show those swatches too.</li>
+    <li>Add a <b>"Tint all"</b> button that multiplies every entity's RGB by the light color.</li>
+    <li>Show a <code>ColorPicker4</code> for the selected entity that also displays the color it had when it was selected, as the reference ("before") color.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1 - recent colors
+static ImVec4 recent[6];
+static int    recentCount = 0, recentNext = 0;
+// ...inside the palette click:  recent[recentNext] = L5_palette[i];
+//                               recentNext = (recentNext + 1) % 6;
+//                               if (recentCount &lt; 6) recentCount++;
+ImGui::SeparatorText("Recent");
+for (int i = 0; i &lt; recentCount; i++)
+{
+    ImGui::PushID(i);
+    if (ImGui::ColorButton("recent", recent[i], ImGuiColorEditFlags_NoAlpha, ImVec2(22, 22)))
+    { e-&gt;color[0] = recent[i].x; e-&gt;color[1] = recent[i].y; e-&gt;color[2] = recent[i].z; }
+    ImGui::PopID();
+    ImGui::SameLine();
+}
+ImGui::NewLine();
+
+// 2 - tint all
+if (ImGui::Button("Tint all"))
+    for (int i = 0; i &lt; gEntityCount; i++)
+        for (int k = 0; k &lt; 3; k++)
+            gEntities[i].color[k] *= gLight.color[k];
+
+// 3 - picker with reference color
+static float refColor[4];
+static int   refFor = -1;
+if (refFor != gSelectedEntity)       // selection changed: remember the starting color
+{
+    for (int k = 0; k &lt; 4; k++) refColor[k] = e-&gt;color[k];
+    refFor = gSelectedEntity;
+}
+ImGui::ColorPicker4("##picker", e-&gt;color, ImGuiColorEditFlags_AlphaBar, refColor);</code></pre>
+  </details>
+</div>

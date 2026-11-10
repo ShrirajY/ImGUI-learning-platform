@@ -1,0 +1,144 @@
+<h2>Two ways to build a GUI</h2>
+<p>Most GUI toolkits you may have used (Win32 controls, MFC, Qt, WinForms, HTML) are <b>retained mode</b>. You create widget <i>objects</i> once, the toolkit keeps them alive, and it calls you back when something happens. Dear ImGui is <b>immediate mode</b>. There are no widget objects. Every frame you call functions that describe the UI, and each call returns what the user just did.</p>
+
+<div class="tabs">
+  <div class="tab-btns">
+    <button class="tab-btn">Retained mode (Win32 style)</button>
+    <button class="tab-btn">Immediate mode (ImGui)</button>
+  </div>
+  <div class="tab-pane">
+<pre><code class="cpp">// 1. Create the control ONCE (e.g. in WM_CREATE)
+HWND hButton = CreateWindow(TEXT("BUTTON"), TEXT("Spawn cube"),
+                            WS_CHILD | WS_VISIBLE, 10, 10, 120, 30,
+                            hwnd, (HMENU)ID_SPAWN, hInstance, NULL);
+
+// 2. React to it somewhere else, in a callback
+case WM_COMMAND:
+    if (LOWORD(wParam) == ID_SPAWN)
+        Engine_AddEntity("Cube", MESH_CUBE);
+    break;
+
+// 3. Keep it in sync by hand: when gEntityCount changes, update the label...
+SetWindowText(hLabel, buffer);
+// ...and remember to DestroyWindow() it when you no longer need it.</code></pre>
+<p>The UI state is spread over three places: the control object, the callback, and your data. You have to keep them in sync.</p>
+  </div>
+  <div class="tab-pane">
+<pre><code class="cpp">// Called EVERY frame, from the render loop
+void Lesson_UI(void)
+{
+    ImGui::Begin("Spawner");
+    if (ImGui::Button("Spawn cube"))                 // draws the button AND reports the click
+        Engine_AddEntity("Cube", MESH_CUBE);
+    ImGui::Text("Entities: %d", gEntityCount);       // always shows the current value
+    ImGui::End();
+}</code></pre>
+<p>Creation, drawing and event handling all happen in one line. To remove the button, stop calling <code>Button()</code>. To show it conditionally, put it inside an <code>if</code>.</p>
+  </div>
+</div>
+
+<table>
+  <tr><th></th><th>Retained mode</th><th>Immediate mode</th></tr>
+  <tr><td>Widgets are</td><td>Objects you create and destroy</td><td>Function calls you make every frame</td></tr>
+  <tr><td>Events arrive via</td><td>Callbacks / messages</td><td>Return values (<code>if (Button())</code>)</td></tr>
+  <tr><td>Data binding</td><td>Copy values in and out, keep in sync</td><td>Pass a pointer to your variable</td></tr>
+  <tr><td>Dynamic UI</td><td>Create/destroy controls as data changes</td><td>Ordinary <code>if</code> and <code>for</code></td></tr>
+  <tr><td>Best for</td><td>End-user apps, accessibility, complex text layout</td><td>Tools, editors, debug UIs, in-game overlays</td></tr>
+</table>
+
+<div class="note"><b>"Immediate" is about the API, not the drawing</b>
+<p>ImGui doesn't draw each widget the moment you call it. It collects everything into vertex buffers and draws it all at the end of the frame in a few draw calls. "Immediate mode" means that <i>you</i> don't keep widget objects around. This is similar to old <code>glBegin()/glEnd()</code>, where you re-submitted the geometry every frame instead of building a scene graph.</p></div>
+
+<h2>One frame, step by step</h2>
+<p>This is what happens every frame in the engine's <code>Frame()</code> function, which corresponds to <code>display()</code> plus <code>IMGUI_display()</code> in the starter OGL.c. Click the steps or press Play:</p>
+<div data-demo="frame-loop"></div>
+<p>The important part is step 5. Your <code>Lesson_UI()</code> runs <b>every frame</b>, about 60 times a second. Because it re-runs constantly, changes to your data appear on screen immediately, without any "refresh" or "invalidate" call.</p>
+
+<h2>The architecture: core + two backends</h2>
+<p>Dear ImGui is split into three layers. You compile all of them into your program:</p>
+<table>
+  <tr><th>Layer</th><th>Files</th><th>Job</th></tr>
+  <tr><td><b>Core</b></td><td><code>imgui.cpp</code>, <code>imgui_widgets.cpp</code>, <code>imgui_draw.cpp</code>, <code>imgui_tables.cpp</code>, <code>imgui_demo.cpp</code></td><td>Widgets, layout, IDs, fonts, building vertex buffers. Knows nothing about Windows or OpenGL.</td></tr>
+  <tr><td><b>Platform backend</b></td><td><code>imgui_impl_win32.cpp</code></td><td>Feeds Win32 messages (mouse, keyboard, focus, cursor) and window size + time into ImGui.</td></tr>
+  <tr><td><b>Renderer backend</b></td><td><code>imgui_impl_opengl2.cpp</code></td><td>Uploads the font texture and draws ImGui's triangles with fixed-function OpenGL (<code>glVertexPointer</code>, <code>glDrawElements</code>).</td></tr>
+</table>
+<p>Because the core is separate from the backends, the same UI code runs on DirectX, Vulkan, SDL or GLFW. You only swap the two backend files.</p>
+
+<h2>ImGuiIO: the bridge</h2>
+<p><code>ImGuiIO</code> is one struct, returned by <code>ImGui::GetIO()</code>, that holds the inputs and outputs between your application and ImGui:</p>
+<table>
+  <tr><th>Field</th><th>Direction</th><th>Meaning</th></tr>
+  <tr><td><code>io.DisplaySize</code></td><td>in</td><td>Window client size in pixels (set by the Win32 backend)</td></tr>
+  <tr><td><code>io.DeltaTime</code></td><td>in</td><td>Seconds since last frame</td></tr>
+  <tr><td><code>io.MousePos</code>, <code>io.MouseDown[]</code></td><td>in</td><td>Mouse state, from WndProc messages</td></tr>
+  <tr><td><code>io.ConfigFlags</code></td><td>in</td><td>Options such as <code>ImGuiConfigFlags_NavEnableKeyboard</code></td></tr>
+  <tr><td><code>io.WantCaptureMouse</code></td><td>out</td><td>True when the mouse is over/using ImGui, so the game should ignore it</td></tr>
+  <tr><td><code>io.WantCaptureKeyboard</code></td><td>out</td><td>True when ImGui wants the keyboard (e.g. typing in a text field)</td></tr>
+  <tr><td><code>io.Framerate</code></td><td>out</td><td>Rolling-average FPS</td></tr>
+</table>
+<div class="engine"><b>Game-engine angle</b>
+<p>Every engine with ImGui needs this check: <i>"Is this click for the UI or for the game?"</i>. The mini engine's camera code does it:</p>
+<pre><code class="cpp">if (!io.WantCaptureMouse)      // mouse is over the 3D view, not over a panel
+{
+    // orbit / pan / zoom / pick entities
+}
+if (!io.WantCaptureKeyboard)   // the user is not typing in an InputText
+{
+    // WASD camera movement
+}</code></pre>
+<p>Without it, typing "dog" into an entity name field would also move the camera with the D key.</p></div>
+
+<h2>Where does the state live?</h2>
+<p>A common question is: "If nothing is retained, how does a checkbox remember it's checked?" The answer is that <b>you</b> store it:</p>
+<pre><code class="cpp">ImGui::Checkbox("Wireframe", &amp;gWireframe);   // the bool is YOUR variable</code></pre>
+<p>ImGui reads <code>gWireframe</code> to draw the box and writes to it when it's clicked. The engine variable <i>is</i> the UI state. ImGui itself keeps only a small amount of internal state, indexed by <b>ID</b> (lesson 06):</p>
+<ul>
+  <li>window positions, sizes, collapsed state and scroll,</li>
+  <li>which widget is hovered or active right now (e.g. the slider you're dragging),</li>
+  <li>tree node open/closed flags, and the text cursor of an active InputText.</li>
+</ul>
+<div class="tip"><b>static vs global</b>
+<p>For UI-only values (a "show window" flag, a search buffer) a <code>static</code> local inside <code>Lesson_UI()</code> is the simplest choice. It keeps its value between frames just like a global. For real engine data, point widgets directly at the engine's variables.</p></div>
+
+<h2>Performance myths</h2>
+<ul>
+  <li><b>"Rebuilding the UI every frame must be slow."</b> A typical editor UI costs a fraction of a millisecond of CPU time. Widgets that are scrolled out of view or in collapsed windows are skipped almost for free.</li>
+  <li><b>"It must issue thousands of draw calls."</b> No. Everything is batched into one vertex buffer, and there is roughly one draw call per window (more only when clipping or textures change). Open <code>ShowMetricsWindow()</code> to see the exact numbers.</li>
+  <li><b>"Immediate mode means no caching."</b> ImGui caches glyphs, text sizes, and window and table state. What it doesn't cache is <i>your</i> data, so it can never be out of date.</li>
+  <li><b>When it does cost:</b> listing 100,000 items without clipping. <code>ImGuiListClipper</code>, covered with tables and the console later in the course, fixes that by only submitting the visible rows.</li>
+</ul>
+
+<h2>The example code</h2>
+<p>The code on the right shows a counter (state you own) and a live view of <code>ImGuiIO</code>. Build &amp; Run it, then:</p>
+<ol>
+  <li>Click <b>Click me</b> five times and watch a new line appear. That is a plain <code>if</code> statement at work.</li>
+  <li>Move the mouse between the 3D view and a window, and watch <code>io.WantCaptureMouse</code> flip.</li>
+  <li>Resize the window and see <code>io.DisplaySize</code> follow.</li>
+</ol>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Show a <b>"Spawn cube"</b> button that calls <code>Engine_AddEntity("Cube", MESH_CUBE)</code>, and display <code>gEntityCount</code> under it. Confirm the count updates without any extra code.</li>
+    <li>Only show the ImGuiIO window while the <kbd>Shift</kbd> key is held. Hint: <code>io.KeyShift</code>.</li>
+    <li>Show <code>"Mouse over UI"</code> in orange or <code>"Mouse over scene"</code> in grey, based on <code>io.WantCaptureMouse</code>.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">ImGuiIO &amp;io = ImGui::GetIO();
+
+if (ImGui::Button("Spawn cube"))
+    Engine_AddEntity("Cube", MESH_CUBE);
+ImGui::Text("Entities: %d", gEntityCount);
+
+if (io.WantCaptureMouse)
+    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.2f, 1.0f), "Mouse over UI");
+else
+    ImGui::TextDisabled("Mouse over scene");
+
+// Challenge 2: replace  if (showIoWindow)  with
+if (io.KeyShift)
+{
+    // ... the ImGuiIO window ...
+}</code></pre>
+  </details>
+</div>

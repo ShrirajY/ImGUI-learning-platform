@@ -1,0 +1,206 @@
+<h2>What you are building</h2>
+<p>This lesson puts everything together into one editor that feels like a small version of the tools you use every day. It is long (about 700 lines), but each piece is something you have already written in an earlier lesson. The new part is the <b>architecture</b> that holds the pieces together.</p>
+<div class="mock" style="min-width:100%;max-width:640px">
+  <div class="mock-title">File  Edit  View  Create          [ Play ]                    EDIT | 5 entities | 60 FPS</div>
+  <div class="mock-body" style="display:grid;grid-template-columns:1fr 2.4fr 1.2fr;gap:6px;min-height:200px">
+    <div style="display:grid;grid-template-rows:1fr 1fr;gap:6px">
+      <div style="border:1px solid #6e6e8080;padding:4px">Scene Hierarchy<br><span class="muted">Ground<br>Crate<br>Planet</span></div>
+      <div style="border:1px solid #6e6e8080;padding:4px">Render Settings</div>
+    </div>
+    <div style="display:grid;grid-template-rows:2fr 1fr;gap:6px">
+      <div style="padding:4px;color:#8b93a7;text-align:center">3D view stays visible<br>(labels drawn on top)</div>
+      <div style="display:grid;grid-template-columns:3fr 2fr;gap:6px">
+        <div style="border:1px solid #6e6e8080;padding:4px">Console</div>
+        <div style="border:1px solid #6e6e8080;padding:4px">Assets</div>
+      </div>
+    </div>
+    <div style="border:1px solid #6e6e8080;padding:4px">Inspector<br><span class="muted">Transform<br>Mesh<br>Material<br>Behaviour</span></div>
+  </div>
+</div>
+
+<h2>Architecture in four ideas</h2>
+<h3>1. One struct for all editor state</h3>
+<p>Panel visibility, console filter, rename buffer, play-mode snapshot: everything the <i>editor</i> needs, and the game does not, lives in <code>Ed_State</code>:</p>
+<pre><code class="cpp">struct Ed_State
+{
+    bool showHierarchy, showInspector, showConsole, showRender, showAssets, showStats;
+    bool editorVisible;                 // F1
+    bool playing;                       // play mode
+    Entity snapshot[MAX_ENTITIES];      // scene copy taken when Play is pressed
+    ImGuiTextFilter consoleFilter;
+    char consoleInput[128];
+    ...
+};
+static Ed_State ed;</code></pre>
+<p>This draws a clear line: <b>engine data</b> (<code>gEntities</code>, <code>gCamera</code>, <code>gLight</code>) is what the game runs on, and <b>editor data</b> (<code>ed</code>) is only about how you view and edit it. A shipped game wouldn't contain <code>ed</code> at all.</p>
+
+<h3>2. One function per panel</h3>
+<pre><code class="cpp">void Lesson_UI(void)
+{
+    Ed_HandleShortcuts();
+    if (ed.editorVisible)
+    {
+        Ed_MainMenuBar();                       // first: it reserves space at the top
+        if (ed.showHierarchy) Ed_PanelHierarchy();
+        if (ed.showRender)    Ed_PanelRender();
+        if (ed.showInspector) Ed_PanelInspector();
+        if (ed.showConsole)   Ed_PanelConsole();
+        if (ed.showAssets)    Ed_PanelAssets();
+        if (ed.showStats)     Ed_StatsOverlay();
+        if (ed.showLabels &amp;&amp; !ed.playing) Ed_EntityLabels();
+    }
+    Ed_FlushCommands();                         // structural changes run last
+}</code></pre>
+<p>Panels don't call each other. They communicate only through shared state: <code>gSelectedEntity</code> is the "selection bus" that the hierarchy writes, 3D picking writes, and the inspector reads. Adding a new panel means adding one function and one <code>show</code> flag.</p>
+<div class="tip"><b>Pass &amp;ed.showX to Begin</b>
+<p><code>ImGui::Begin("Inspector", &amp;ed.showInspector)</code> gives the window a close button that writes into the same bool the View menu toggles with <code>MenuItem("Inspector", NULL, &amp;ed.showInspector)</code>. One variable, two UIs, always in sync.</p></div>
+
+<h3>3. Deferred commands</h3>
+<p>Deleting entity #3 while the hierarchy loop is at row #3 shifts every later entity down by one. The rest of the loop then draws wrong names, and IDs jump. Duplicating can grow the array mid-loop. So <b>structural</b> changes are recorded and executed after all panels have run:</p>
+<pre><code class="cpp">enum Ed_CmdType { ED_CMD_CREATE, ED_CMD_DUPLICATE, ED_CMD_DELETE, ED_CMD_FOCUS, ED_CMD_RESET, ED_CMD_CLEAR, ED_CMD_QUIT };
+struct Ed_Command { int type; int arg; };
+
+if (ImGui::MenuItem("Delete", "Del")) Ed_Queue(ED_CMD_DELETE, i);   // inside the loop: just record
+
+static void Ed_FlushCommands(void)                                 // end of frame: execute
+{
+    for (int c = 0; c &lt; Ed_queueCount; c++)
+        switch (Ed_queue[c].type) { case ED_CMD_DELETE: Engine_RemoveEntity(Ed_queue[c].arg); break; ... }
+    Ed_queueCount = 0;
+}</code></pre>
+<p>Simple edits like dragging a position or typing a name still write directly. Only operations that change the <i>shape</i> of the data are deferred. The same queue is the natural place to add <b>undo/redo</b> later: each command knows how to do and undo itself.</p>
+
+<h3>4. Edit mode vs play mode</h3>
+<p>Every serious engine separates editing the level from running it. Pressing Play takes a snapshot, and pressing Stop restores it, so whatever the game did while running is thrown away:</p>
+<pre><code class="cpp">static void Ed_Play(void)
+{
+    memcpy(ed.snapshot, gEntities, sizeof(Entity) * gEntityCount);
+    ed.snapshotCount = gEntityCount;
+    ed.playing = true;
+    gPaused = false;                     // behaviours (spin) only run while playing
+}
+static void Ed_Stop(void)
+{
+    memcpy(gEntities, ed.snapshot, sizeof(Entity) * ed.snapshotCount);
+    gEntityCount = ed.snapshotCount;
+    ed.playing = false;
+    gPaused = true;
+}</code></pre>
+<p>While playing, the menu bar is tinted red (a <code>PushStyleColor(ImGuiCol_MenuBarBg)</code> around <code>BeginMainMenuBar</code>), because "I tweaked everything during play and lost it on Stop" is a classic engine-user mistake. Make the state obvious.</p>
+
+<h2>Laying out around the 3D view</h2>
+<p>There is no docking in this ImGui version, so the editor computes a default layout from the viewport's work area:</p>
+<pre><code class="cpp">static void Ed_NextWindowRect(float x, float y, float w, float h)
+{
+    ImGuiCond cond = (ed.resetLayout || ed.layoutWarmup &gt; 0) ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp-&gt;WorkPos.x + x, vp-&gt;WorkPos.y + y), cond);
+    ImGui::SetNextWindowSize(ImVec2(w, h), cond);
+}
+
+Ed_NextWindowRect(0, 0, ED_LEFT_W, 420);                                          // hierarchy: left
+Ed_NextWindowRect(vp-&gt;WorkSize.x - ED_RIGHT_W, 0, ED_RIGHT_W, vp-&gt;WorkSize.y);    // inspector: right
+Ed_NextWindowRect(ED_LEFT_W, vp-&gt;WorkSize.y - ED_BOTTOM_H, midW * 0.6f, ED_BOTTOM_H); // console: bottom</code></pre>
+<ul>
+  <li><code>BeginMainMenuBar()</code> reserves the top strip, and <code>WorkPos</code>/<code>WorkSize</code> exclude it, so panels start below the menu.</li>
+  <li><code>ImGuiCond_FirstUseEver</code> means "only if the window has no saved position", so the user can still rearrange everything.</li>
+  <li><b>View &gt; Reset Layout</b> sets a flag that switches to <code>ImGuiCond_Always</code> for one frame.</li>
+</ul>
+<div class="warn"><b>The work area updates one frame late</b>
+<p>The menu bar's height is subtracted from <code>WorkPos</code>/<code>WorkSize</code> starting on the <i>next</i> frame. On frame 1, <code>FirstUseEver</code> would place the panels under the menu bar and keep them there. The editor forces the layout for its first two frames (<code>ed.layoutWarmup</code>) to get around this.</p></div>
+
+<h2>Panel tour</h2>
+<table>
+  <tr><th>Panel</th><th>Techniques (lesson)</th></tr>
+  <tr><td>Main menu bar</td><td><code>BeginMainMenuBar</code>, <code>MenuItem(label, shortcut, selected, enabled)</code>, play buttons, right-aligned status via <code>SameLine(x)</code> (10)</td></tr>
+  <tr><td>Scene Hierarchy</td><td>filter, <code>Selectable</code> with double-click, visibility checkbox, <code>BeginPopupContextItem</code> per row, <code>BeginPopupContextWindow</code> with <code>NoOpenOverItems</code> for empty space, rename modal, texture drop targets (8, 9, 10, 13)</td></tr>
+  <tr><td>Inspector</td><td><code>PushID(selected)</code>, collapsing headers, Drag/Color/Combo widgets, texture slot with image preview + drop target, <code>BeginDisabled</code> (4, 5, 9, 16)</td></tr>
+  <tr><td>Console</td><td><code>Engine_GetLog</code>, level toggles, <code>ImGuiTextFilter</code>, monospace font, auto-scroll, command line with <code>EnterReturnsTrue</code> + <code>SetKeyboardFocusHere(-1)</code> (12, 17)</td></tr>
+  <tr><td>Assets</td><td>horizontal <code>ImageButton</code> strip, drag source <code>"TEXTURE_INDEX"</code>, tooltips (13, 16)</td></tr>
+  <tr><td>Render Settings</td><td>direct binding to engine globals (3, 4, 5)</td></tr>
+  <tr><td>Stats overlay</td><td>HUD flags, pivot, positioned left of the inspector (14)</td></tr>
+  <tr><td>Entity labels</td><td><code>Engine_WorldToScreen</code> + background draw list (15)</td></tr>
+</table>
+
+<h3>Shortcuts that respect typing</h3>
+<pre><code class="cpp">static void Ed_HandleShortcuts(void)
+{
+    ImGuiIO &amp;io = ImGui::GetIO();
+    if (io.WantTextInput) return;                                   // typing a name: no hotkeys
+    if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) ed.editorVisible = !ed.editorVisible;
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_D)) Ed_Queue(ED_CMD_DUPLICATE, gSelectedEntity);
+    if (ImGui::IsKeyPressed(ImGuiKey_Delete, false))           Ed_Queue(ED_CMD_DELETE, gSelectedEntity);
+}</code></pre>
+<p>Why <code>WantTextInput</code> and not <code>WantCaptureKeyboard</code>? With keyboard navigation enabled, <i>any</i> focused panel captures the keyboard, but you still want <kbd>Del</kbd> to work right after clicking a row in the hierarchy. You only want it to stop while a text field is being edited.</p>
+
+<div class="engine"><b>Game-engine angle: editor layer vs runtime</b>
+<p>In a real engine, everything prefixed <code>Ed_</code> lives in a separate <b>editor module</b> (often a separate DLL or a <code>#if WITH_EDITOR</code> build), and the runtime knows nothing about it. The runtime exposes a scene, systems and an API, the same role as the <code>Engine_*</code> block in OGL.c. The editor is just another client of that API. That's why <kbd>F1</kbd> can hide the whole editor with one bool, and why a shipped build can leave it out entirely. In practice:</p>
+<ul>
+  <li><b>Play mode</b> serialises the scene (to memory or disk) and restores it on Stop. The snapshot here is the in-memory version.</li>
+  <li><b>Commands</b> become an undo stack, and later the basis for multi-user editing or scripting. The console's <code>spawn sphere</code> and the menu's Create &gt; Sphere go through the same queue.</li>
+  <li><b>Selection</b> grows into a set (multi-select) with a "selection changed" event, but a single global index carries you a long way.</li>
+  <li><b>The 3D view</b> moves into its own ImGui window via a render target. That's lesson 19's "Game View".</li>
+</ul></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add an <b>Edit &gt; Undo Delete</b>: before <code>ED_CMD_DELETE</code> runs, copy the entity and its index into <code>ed</code>. Undo re-inserts it at that index (shift the array up by one).</li>
+    <li>Add a console command <code>color r g b</code> that sets the selected entity's colour (values 0..1), and <code>tex &lt;name&gt;</code> that finds a texture by name.</li>
+    <li>Add a <b>"Toolbar"</b> window right under the menu bar (<code>NoDecoration</code>, full work-area width minus the side panels) with buttons for Grid, Wireframe and the five mesh types. Use <code>PushStyleColor</code> to highlight active toggles.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) undo delete - add to Ed_State:  Entity undoEntity; int undoIndex; bool canUndo;
+case ED_CMD_DELETE:
+    if (arg &gt;= 0 &amp;&amp; arg &lt; gEntityCount)
+    {
+        ed.undoEntity = gEntities[arg]; ed.undoIndex = arg; ed.canUndo = true;
+        Engine_RemoveEntity(arg);
+    }
+    break;
+// Edit menu:
+if (ImGui::MenuItem("Undo Delete", "Ctrl+Z", false, ed.canUndo &amp;&amp; gEntityCount &lt; MAX_ENTITIES))
+{
+    for (int i = gEntityCount; i &gt; ed.undoIndex; i--) gEntities[i] = gEntities[i - 1];
+    gEntities[ed.undoIndex] = ed.undoEntity;
+    gEntityCount++;
+    gSelectedEntity = ed.undoIndex;
+    ed.canUndo = false;
+}
+
+// 2) console commands, inside Ed_ExecCommand
+else if (_stricmp(cmd, "color") == 0 &amp;&amp; Ed_HasSelection())
+{
+    float r, g, b;
+    if (sscanf(arg, "%f %f %f", &amp;r, &amp;g, &amp;b) == 3)
+    { float *c = gEntities[gSelectedEntity].color; c[0] = r; c[1] = g; c[2] = b; }
+    else Engine_LogError("usage: color r g b");
+}
+else if (_stricmp(cmd, "tex") == 0 &amp;&amp; Ed_HasSelection())
+{
+    for (int t = 0; t &lt; gTextureCount; t++)
+        if (_stricmp(gTextures[t].name, arg) == 0) gEntities[gSelectedEntity].texture = t;
+}
+
+// 3) toolbar
+static void Ed_Toolbar(void)
+{
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(ImVec2(vp-&gt;WorkPos.x + ED_LEFT_W, vp-&gt;WorkPos.y));
+    ImGui::SetNextWindowSize(ImVec2(vp-&gt;WorkSize.x - ED_LEFT_W - ED_RIGHT_W, 0));
+    ImGui::Begin("##toolbar", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    bool *toggles[2] = { &amp;gShowGrid, &amp;gWireframe };
+    const char *names[2] = { "Grid", "Wire" };
+    for (int i = 0; i &lt; 2; i++)
+    {
+        bool on = *toggles[i];
+        if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+        if (ImGui::Button(names[i])) *toggles[i] = !*toggles[i];
+        if (on) ImGui::PopStyleColor();
+        ImGui::SameLine();
+    }
+    for (int m = 0; m &lt; MESH_COUNT; m++) { ImGui::SameLine(); if (ImGui::Button(gMeshNames[m])) Ed_Queue(ED_CMD_CREATE, m); }
+    ImGui::End();
+}</code></pre>
+  </details>
+</div>

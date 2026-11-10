@@ -1,0 +1,33 @@
+{
+  "id": "12-console",
+  "title": "Building an Engine Console",
+  "summary": "A Quake-style console: coloured engine log with level and text filters, smart auto-scroll, a pinned command line, a small command parser, history on Up/Down and Tab completion.",
+  "minutes": 35,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "What does <code>ImGuiInputTextFlags_EnterReturnsTrue</code> change?",
+      "options": ["Enter inserts a newline", "InputText returns true only when Enter is pressed, instead of on every edit", "The text is cleared on Enter", "Focus stays on the field after Enter"],
+      "answer": 1,
+      "explain": "Without the flag, InputText returns true whenever the text changes. Focus is NOT kept automatically, which is why the console calls <code>SetKeyboardFocusHere(-1)</code> afterwards."
+    },
+    {
+      "q": "Why does the console only call <code>SetScrollHereY(1.0f)</code> when <code>GetScrollY() &gt;= GetScrollMaxY()</code>?",
+      "options": ["SetScrollHereY is slow", "So it follows new lines only if the user was already at the bottom, and doesn't yank them away while they read older lines", "GetScrollMaxY is always 0", "To make the scrollbar visible"],
+      "answer": 1,
+      "explain": "Sticky auto-scroll: at the bottom you follow the stream, scrolled up you stay put."
+    },
+    {
+      "q": "Inside the history callback, how should you replace the current line?",
+      "options": ["<code>strcpy(myInputBuffer, history[i])</code>", "<code>data-&gt;DeleteChars(0, data-&gt;BufTextLen); data-&gt;InsertChars(0, history[i]);</code>", "Call InputText again", "Set <code>data-&gt;Buf = history[i]</code>"],
+      "answer": 1,
+      "explain": "While active, InputText owns an internal copy of the text. The callback helpers keep the buffer, length, cursor and internal state consistent. Never replace the <code>Buf</code> pointer."
+    },
+    {
+      "q": "The log child is created with height <code>-footer</code>. What does the negative height mean?",
+      "options": ["The child is hidden", "Fill the available height minus <code>footer</code> pixels, leaving room for the input line", "Scroll upward", "Auto-resize to content"],
+      "answer": 1,
+      "explain": "Negative sizes in BeginChild mean 'all remaining space minus this amount', the same convention as negative item widths."
+    }
+  ]
+}

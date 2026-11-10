@@ -1,0 +1,132 @@
+<p class="lead">This is the most important "gotcha" in Dear ImGui, and every engine UI runs into it on the first entity list. Learn it now and you'll save yourself hours of confusing bugs.</p>
+
+<h2>Why widgets need IDs</h2>
+<p>ImGui keeps no widget objects, but it still has to remember a few things between frames: <i>which slider is being dragged</i>, <i>which tree node is open</i>, <i>which text field has the cursor</i>. It identifies each widget by an <b>ID</b>, a 32-bit hash computed from:</p>
+<pre><code class="cpp">ID = hash( ID stack  +  widget label )
+            ^ window name, tree nodes, PushID() values...</code></pre>
+<p>By default the label you pass is both the visible text <b>and</b> the ID source. Two widgets with the same label in the same window therefore get the <b>same ID</b>.</p>
+
+<h2>The broken entity list</h2>
+<p>Here's what everyone writes first:</p>
+<pre><code class="cpp">// BROKEN - every row has the same IDs
+ImGui::Begin("Scene List");
+for (int i = 0; i &lt; gEntityCount; i++)
+{
+    Entity *e = &amp;gEntities[i];
+    ImGui::Checkbox("Visible", &amp;e-&gt;visible);   // ID = hash("Scene List" + "Visible")  - same every row!
+    ImGui::SameLine();
+    ImGui::Text("%s", e-&gt;name);
+    ImGui::SameLine();
+    if (ImGui::Button("Select"))               // ID = hash("Scene List" + "Select")   - same every row!
+        gSelectedEntity = i;
+}
+ImGui::End();</code></pre>
+<p>What happens when you run it:</p>
+<ul>
+  <li>Clicking <b>Select</b> on row 4 activates the ID, but every row reacts to that same ID. Depending on the widget, the first row "steals" the click, or several rows respond.</li>
+  <li>Checkboxes toggle the wrong entity, or appear to ignore clicks.</li>
+  <li>This ImGui version shows a red <b>"Programmer error: N visible items with conflicting ID!"</b> tooltip when you hover a colliding widget. That's <code>io.ConfigDebugHighlightIdConflicts</code>, which is on by default. Pay attention to it.</li>
+</ul>
+
+<h2>Fix 1: PushID / PopID in loops</h2>
+<p><code>PushID</code> adds a value to the <b>ID stack</b>. Every widget submitted until the matching <code>PopID</code> includes that value in its hash:</p>
+<pre><code class="cpp">// FIXED
+for (int i = 0; i &lt; gEntityCount; i++)
+{
+    Entity *e = &amp;gEntities[i];
+    ImGui::PushID(i);                          // stack: "Scene List" / i
+    ImGui::Checkbox("##vis", &amp;e-&gt;visible);     // ID = hash("Scene List" / i / "##vis")  - unique
+    ImGui::SameLine();
+    ImGui::Text("%s", e-&gt;name);
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Select"))          // ID = hash("Scene List" / i / "Select") - unique
+        gSelectedEntity = i;
+    ImGui::PopID();                            // must ALWAYS match PushID
+}</code></pre>
+<table>
+  <tr><th>Overload</th><th>Use when</th></tr>
+  <tr><td><code>PushID(int)</code></td><td>Loop index or a numeric entity ID. The simplest choice.</td></tr>
+  <tr><td><code>PushID(const void*)</code></td><td>A pointer to the object, e.g. <code>PushID(e)</code>. Stable as long as the object doesn't move in memory.</td></tr>
+  <tr><td><code>PushID(const char*)</code></td><td>A unique string such as a file path or GUID text.</td></tr>
+</table>
+<div class="warn"><b>Index vs stable ID</b>
+<p>An index ID belongs to a <i>row position</i>, not to an object. When you delete entity 2, entity 3 becomes index 2 and inherits row 2's ImGui state (open tree node, active text field). The engine's <code>gEntities[]</code> array is compacted on removal, so pointers move too. A real engine gives each entity a permanent unique ID (a <code>uint32</code> or GUID) and calls <code>PushID((int)entity.uid)</code>. ImGui Lab's <code>Entity</code> struct has no such field, so we use the index, which is fine for this list.</p></div>
+
+<h2>Fix 2: "##" hides part of the label</h2>
+<p>Everything after <code>##</code> is <b>used for the ID but not displayed</b>:</p>
+<pre><code class="cpp">ImGui::Checkbox("##vis", &amp;e-&gt;visible);        // no visible label at all
+ImGui::Button("Delete##entity");               // shows "Delete"
+ImGui::Button("Delete##component");            // also shows "Delete", but a different ID
+ImGui::SliderFloat("##speed", &amp;speed, 0, 10);  // label-less slider (common in tables)</code></pre>
+<div class="warn"><b>Empty labels collide too</b>
+<p><code>ImGui::Button("")</code> twice in one window is a collision. Always give label-less widgets a <code>##name</code>.</p></div>
+
+<h2>Fix 3: "###" keeps the ID while the label changes</h2>
+<p>With <code>##</code> the <i>whole</i> string is still hashed, so changing the visible part changes the ID. With <code>###</code> only the part <b>after</b> <code>###</code> is hashed:</p>
+<pre><code class="cpp">char label[64];
+snprintf(label, sizeof(label), "Clicked %d times###clickCounter", clicks);
+ImGui::Button(label);                          // ID = hash("clickCounter"), whatever the text says
+
+// Works for windows too: the title changes, the window (position, size) stays the same
+snprintf(title, sizeof(title), "Inspector - %s###Inspector", e-&gt;name);
+ImGui::Begin(title);</code></pre>
+<p>Without <code>###</code>, a window titled <code>"Inspector - Crate"</code> would become a <i>new</i> window the moment you selected the Planet, and it would jump back to its default position.</p>
+
+<h2>GetID and the ID stack</h2>
+<pre><code class="cpp">ImGuiID a = ImGui::GetID("Select");    // what ID would "Select" get right here?
+ImGui::PushID(0);
+ImGuiID b = ImGui::GetID("Select");    // different: the stack now contains 0
+ImGui::PopID();</code></pre>
+<p>These things push onto the ID stack for you: <code>Begin()</code> (the window name), <code>TreeNode()</code> (while open), <code>BeginChild()</code>, <code>BeginTable()</code>, <code>BeginMenu()</code>, <code>BeginTabItem()</code>. That's why two different windows can both have a "Select" button without any problem.</p>
+
+<h2>Debugging IDs</h2>
+<ul>
+  <li><b>ID Stack Tool</b>: <code>ImGui::ShowIDStackToolWindow(&amp;open)</code>, or Demo &gt; Tools. Hover any widget to see the full path of the ID: window, PushID values, label, and the resulting hash. Hover two "Select" buttons in the example and compare.</li>
+  <li><b>Conflict tooltip</b>: the red tooltip described above appears automatically on colliding items.</li>
+  <li><b>Metrics/Debugger</b>: <code>ShowMetricsWindow()</code> &gt; Tools &gt; <b>Item Picker</b>. Click a widget and ImGui triggers a <b>debugger breakpoint</b> inside the code that submitted it, with the call stack pointing to your line.</li>
+</ul>
+<div class="warn"><b>Item Picker needs a debugger</b>
+<p>The Item Picker calls <code>__debugbreak()</code>. If no debugger is attached, Windows treats that as a crash and the program closes. Use it only when you've started the exe from Visual Studio (Debug &gt; Attach to Process works too).</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Editor UIs are full of repeated widgets: one row per entity in the hierarchy, one "Remove" button per component in the inspector, one slider per material parameter, one thumbnail per asset. The rule is simple: <b>whenever you submit widgets in a loop, wrap the body in <code>PushID</code>/<code>PopID</code></b>, ideally with the object's permanent ID. For example:</p>
+<pre><code class="cpp">for (each component c in entity)
+{
+    ImGui::PushID(c);                       // pointer or component id
+    if (ImGui::CollapsingHeader(c-&gt;TypeName()))
+        c-&gt;DrawInspector();                 // its own widgets can reuse labels freely
+    ImGui::PopID();
+}</code></pre></div>
+
+<h2>The example code</h2>
+<p>The code on the right is the <b>fixed</b> scene list. Every row has a visibility checkbox (<code>"##vis"</code>), the name, and <b>Select</b> / <b>Hide</b> buttons that all share their labels, wrapped in <code>PushID(i)</code>. It also has a <code>###</code> counter button, <code>GetID</code> values, and a second window whose title shows the selected name but keeps a stable <code>###Inspector6</code> ID. The ID Stack Tool opens automatically, so hover around.</p>
+<p><b>Try breaking it:</b> comment out the <code>PushID(i)</code> and <code>PopID()</code> lines, rebuild, and click "Select" on different rows. Hover the buttons to see the conflict tooltip.</p>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <b>"Delete"</b> small button to every row that calls <code>Engine_RemoveEntity(i)</code>. Be careful: removing inside the loop shifts the array, so stop the loop with <code>break</code> after a delete (still calling <code>PopID</code> first) or remember the index and delete after the loop.</li>
+    <li>Add a <b>"Dup"</b> small button per row that calls <code>Engine_DuplicateEntity(i)</code>. Explain why its plain label <code>"Dup"</code> needs no <code>##</code> suffix (hint: what is on the ID stack?).</li>
+    <li>Make the "Scene List" window title show the entity count, for example <code>"Scene List (5)"</code>, without the window resetting its position when the count changes.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1 + 2 - inside the loop, after the Hide button
+int toDelete = -1;                 // declare this BEFORE the for loop
+// ...
+ImGui::SameLine();
+if (ImGui::SmallButton("Dup"))     // no ## needed: PushID(i) already makes it unique per row
+    Engine_DuplicateEntity(i);
+ImGui::SameLine();
+if (ImGui::SmallButton("Delete"))
+    toDelete = i;                  // don't modify the array while iterating
+ImGui::PopID();
+// ... after the loop:
+if (toDelete &gt;= 0)
+    Engine_RemoveEntity(toDelete);
+
+// 3 - stable window ID with a changing title
+char title[64];
+snprintf(title, sizeof(title), "Scene List (%d)###SceneList", gEntityCount);
+ImGui::Begin(title);</code></pre>
+  </details>
+</div>

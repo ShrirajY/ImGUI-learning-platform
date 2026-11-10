@@ -1,0 +1,33 @@
+{
+  "id": "13-input-capture-dragdrop",
+  "title": "Input Capture & Drag and Drop",
+  "summary": "Share the mouse and keyboard between ImGui and your engine, query item state, build custom hit areas and drag meshes, colours and entities around the editor.",
+  "minutes": 25,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "The user is typing an entity name in an <code>InputText</code> and presses <kbd>W</kbd>. How should the engine know not to move the camera?",
+      "options": ["Check <code>IsWindowHovered()</code>", "Check <code>io.WantCaptureKeyboard</code>", "Check <code>IsItemActive()</code> on the camera", "It can't; disable WASD while the editor is open"],
+      "answer": 1,
+      "explain": "<code>io.WantCaptureKeyboard</code> is true while ImGui owns the keyboard: an active text field, a modal, or (with keyboard navigation on, as in OGL.c) any focused ImGui window. Skip engine keyboard handling while it is set."
+    },
+    {
+      "q": "When does <code>AcceptDragDropPayload(\"MESH_TYPE\")</code> return a non-NULL payload (with default flags)?",
+      "options": ["Every frame the source is dragged", "When a payload of that type is released over the target", "When any payload hovers the target", "Only when the source calls EndDragDropSource()"],
+      "answer": 1,
+      "explain": "By default it returns the payload only on delivery, the frame the mouse is released over the target. Use <code>ImGuiDragDropFlags_AcceptBeforeDelivery</code> to peek earlier."
+    },
+    {
+      "q": "Why does the reorder code store <code>moveFrom/moveTo</code> and apply them after the loop?",
+      "options": ["Drag and drop only works outside loops", "Changing the array while iterating and drawing it would mix up rows and IDs for that frame", "SetDragDropPayload is asynchronous", "To make it undoable"],
+      "answer": 1,
+      "explain": "Deferring structural changes until after iteration is a standard pattern. The capstone lesson uses it for deletes too."
+    },
+    {
+      "q": "What payload type does <code>ColorEdit4</code> send when you drag its colour square?",
+      "options": ["<code>\"COLOR\"</code>", "<code>\"_COL4F\"</code> (IMGUI_PAYLOAD_TYPE_COLOR_4F)", "<code>\"ImVec4\"</code>", "It is not draggable"],
+      "answer": 1,
+      "explain": "Colour widgets use the built-in <code>\"_COL3F\"</code>/<code>\"_COL4F\"</code> types, so your own targets can accept colours from any colour widget."
+    }
+  ]
+}

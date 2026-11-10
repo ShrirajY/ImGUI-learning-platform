@@ -1,0 +1,27 @@
+{
+  "id": "16-textures-assets",
+  "title": "Textures & an Asset Browser",
+  "summary": "Show OpenGL textures with Image/ImageButton, use UVs for tiling, flipping and zoom, build a wrapping thumbnail browser with tooltips and drag-to-apply, and generate textures at runtime.",
+  "minutes": 25,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "With the OpenGL backend, what is an <code>ImTextureID</code>?",
+      "options": ["A pointer to pixel data", "The GLuint texture name, cast to ImTextureID", "An index into ImGui's font atlas", "A file path"],
+      "answer": 1,
+      "explain": "ImGui stores the ID and hands it back to the backend, which calls <code>glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)id)</code>."
+    },
+    {
+      "q": "Which UVs show a texture flipped vertically?",
+      "options": ["uv0=(0,0) uv1=(1,1)", "uv0=(0,1) uv1=(1,0)", "uv0=(1,0) uv1=(0,1)", "uv0=(1,1) uv1=(0,0)"],
+      "answer": 1,
+      "explain": "Swapping the V coordinates flips vertically. This is what you need when showing an FBO render target."
+    },
+    {
+      "q": "Why does <code>ImageButton</code> take a string as its first argument?",
+      "options": ["It's the tooltip", "It's the ID, since several buttons may show the same texture", "It's the file to load", "It's ignored"],
+      "answer": 1,
+      "explain": "The ID used to come from the texture itself, which broke when two buttons shared a texture. Now you pass an explicit ID (usually <code>\"##thumb\"</code> inside <code>PushID(i)</code>)."
+    }
+  ]
+}

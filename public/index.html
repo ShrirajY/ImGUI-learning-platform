@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImGui Lab - Learn Dear ImGui for Game Engines</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23294a7a'/><rect x='5' y='7' width='22' height='5' rx='1' fill='%234296fa'/><rect x='5' y='15' width='14' height='3' fill='%23ccd'/><rect x='5' y='21' width='18' height='3' fill='%23ccd'/></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="sidebarToggle" title="Toggle lesson list" aria-label="Toggle lesson list">&#9776;</button>
+    <a class="brand" href="#/home"><span class="brand-mark"></span>ImGui&nbsp;Lab</a>
+    <nav class="topnav">
+      <a href="#/home" data-nav="home">Home</a>
+      <a href="#/setup" data-nav="setup">Setup</a>
+      <a href="#/lesson/00-welcome" data-nav="lesson">Lessons</a>
+      <a href="#/playground" data-nav="playground">Playground</a>
+      <a href="#/engine-api" data-nav="engine-api">Engine API</a>
+      <a href="#/cheatsheet" data-nav="cheatsheet">Cheat Sheet</a>
+    </nav>
+    <div class="status-pill" id="statusPill" title="Native build status">checking...</div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="progress-box">
+        <div class="progress-label"><span>Your progress</span><span id="progressText">0 / 0</span></div>
+        <div class="progress-bar"><div id="progressFill"></div></div>
+        <button class="link-btn" id="resetProgress" title="Clear completed lessons, quiz answers and saved code">Reset progress</button>
+      </div>
+      <nav id="lessonNav"></nav>
+    </aside>
+
+    <main id="main" class="main"></main>
+  </div>
+
+  <template id="editorTemplate">
+    <div class="ide">
+      <div class="ide-toolbar">
+        <button class="btn run" data-act="run" title="Compile with MSVC and launch the native window (Ctrl+Enter)">&#9654; Build &amp; Run</button>
+        <button class="btn" data-act="stop" title="Close the running lesson window">&#9632; Stop</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" data-act="copy" title="Copy code">Copy</button>
+        <button class="btn ghost" data-act="reset" title="Restore the lesson's starter code">Reset</button>
+        <button class="btn ghost" data-act="full" title="Show the complete OGL.c this code is compiled into">View OGL.c</button>
+      </div>
+      <div class="ide-file"><span class="file-tab">Lesson.inl</span><span class="file-hint">#included at the bottom of OGL.c &middot; define Lesson_Init() and Lesson_UI()</span></div>
+      <div class="code-editor"></div>
+      <div class="ide-output">
+        <div class="ide-output-head"><span>Build output</span><span class="build-state"></span></div>
+        <pre class="ide-log">Press <b>Build &amp; Run</b> (Ctrl+Enter) to compile this code into the engine and open a real OpenGL window.</pre>
+      </div>
+    </div>
+  </template>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span id="modalTitle"></span><button class="icon-btn" id="modalClose" aria-label="Close">&times;</button></div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <script src="js/highlight.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

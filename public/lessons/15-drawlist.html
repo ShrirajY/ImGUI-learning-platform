@@ -1,0 +1,140 @@
+<h2>Underneath every widget: ImDrawList</h2>
+<p>Every button, slider and window you have drawn so far ends up as triangles in an <code>ImDrawList</code>. A draw list is a growing buffer of vertices, indices and draw commands that the OpenGL2 backend renders at the end of the frame. You can append your own shapes to it, and that is how you build custom widgets, node editors, timelines and in-viewport overlays.</p>
+
+<h2>Three lists to choose from</h2>
+<table>
+  <tr><th>Function</th><th>Drawn</th><th>Use it for</th></tr>
+  <tr><td><code>ImGui::GetWindowDrawList()</code></td><td>with the current window, clipped to it, scrolls with it</td><td>custom widgets, canvases, mini-maps</td></tr>
+  <tr><td><code>ImGui::GetBackgroundDrawList()</code></td><td>before all windows (on top of your 3D scene, behind the UI)</td><td>entity labels, selection brackets, viewport gizmos</td></tr>
+  <tr><td><code>ImGui::GetForegroundDrawList()</code></td><td>after all windows, on top of everything</td><td>debug text, drag previews, "this must be visible" markers</td></tr>
+</table>
+<div class="note"><b>Order of things on screen</b>
+<p>In the mini engine: <code>RenderScene()</code> (OpenGL) first, then ImGui renders the background list, then every window, then the foreground list. The engine's own "RMB orbit | MMB pan..." hint uses the background list too.</p></div>
+
+<h2>Screen coordinates</h2>
+<p>Draw list functions take <b>absolute screen pixels</b> (0,0 = top-left of the client area), not window-relative positions. To draw inside a window, ask where the layout cursor is:</p>
+<pre><code class="cpp">ImVec2 p0   = ImGui::GetCursorScreenPos();               // where the next widget would go
+ImVec2 size = ImVec2(ImGui::GetContentRegionAvail().x, 200);
+ImGui::InvisibleButton("##canvas", size);               // claim the space + get mouse interaction
+ImVec2 p1   = ImVec2(p0.x + size.x, p0.y + size.y);
+
+ImDrawList *dl = ImGui::GetWindowDrawList();
+dl-&gt;AddRectFilled(p0, p1, IM_COL32(25, 28, 36, 255), 4.0f);   // background, rounded 4 px</code></pre>
+<p>The <code>InvisibleButton</code> is important. It advances the layout so the next widget goes below your canvas, and it gives you <code>IsItemHovered()</code> / <code>IsItemActive()</code> for free.</p>
+<div class="warn"><b>No ImVec2 operators here</b>
+<p>ImGui only defines <code>+ - * /</code> for <code>ImVec2</code> if you <code>#define IMGUI_DEFINE_MATH_OPERATORS</code> before including imgui.h. OGL.c doesn't, so the lesson uses tiny helpers like <code>L15_Add(a, b)</code>. In your own engine, defining it is fine.</p></div>
+
+<h2>The primitives</h2>
+<table>
+  <tr><th>Call</th><th>Notes</th></tr>
+  <tr><td><code>AddLine(p1, p2, col, thickness)</code></td><td></td></tr>
+  <tr><td><code>AddRect(min, max, col, rounding, flags, thickness)</code></td><td>outline. <code>AddRectFilled(min, max, col, rounding)</code> for solid</td></tr>
+  <tr><td><code>AddCircle(c, r, col, segments, thickness)</code></td><td><code>segments = 0</code> picks a count automatically. <code>AddCircleFilled</code> for solid</td></tr>
+  <tr><td><code>AddTriangleFilled(p1, p2, p3, col)</code></td><td>arrows, play buttons</td></tr>
+  <tr><td><code>AddBezierCubic(p1, c1, c2, p2, col, thickness)</code></td><td>node-editor wires</td></tr>
+  <tr><td><code>AddText(pos, col, text, text_end)</code></td><td><code>text_end</code> lets you draw part of a string</td></tr>
+  <tr><td><code>PathArcTo(c, r, a_min, a_max)</code> + <code>PathStroke(col, flags, thickness)</code></td><td>build a path from points/arcs, then stroke or <code>PathFillConvex</code> it. Angles in radians, 0 = +X, clockwise on screen</td></tr>
+  <tr><td><code>PushClipRect(min, max, true)</code> / <code>PopClipRect()</code></td><td>keep drawing inside a canvas</td></tr>
+</table>
+<p>Colours are packed <code>ImU32</code>: <code>IM_COL32(r, g, b, a)</code> with 0..255 values, or <code>ImGui::ColorConvertFloat4ToU32(ImVec4)</code> for your 0..1 entity colours. Use <code>ImGui::GetColorU32(ImGuiCol_FrameBg)</code> to match the current theme.</p>
+
+<h2>Building a custom widget: the knob</h2>
+<p>A custom widget follows the same recipe every time: <b>claim space</b> with <code>InvisibleButton</code>, <b>handle input</b> through item queries, <b>draw</b> with the window draw list, and <b>return</b> "changed" like the built-in widgets do.</p>
+<pre><code class="cpp">static bool L15_Knob(const char *label, float *v, float vmin, float vmax, float radius)
+{
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImVec2 center(pos.x + radius, pos.y + radius);
+    ImGui::InvisibleButton(label, ImVec2(radius * 2, radius * 2));       // 1. space + ID
+    bool changed = false;
+    if (ImGui::IsItemActive() &amp;&amp; ImGui::GetIO().MouseDelta.x != 0.0f)    // 2. input
+    {
+        *v += ImGui::GetIO().MouseDelta.x * (vmax - vmin) / 200.0f;      //    200 px = full range
+        *v = *v &lt; vmin ? vmin : (*v &gt; vmax ? vmax : *v);
+        changed = true;
+    }
+    float t = (*v - vmin) / (vmax - vmin);
+    float a = 3.14159f * (0.75f + 1.5f * t);                             // 270 degree sweep
+    ImDrawList *dl = ImGui::GetWindowDrawList();                          // 3. draw
+    dl-&gt;AddCircleFilled(center, radius, ImGui::GetColorU32(ImGuiCol_FrameBg));
+    dl-&gt;AddLine(center, ImVec2(center.x + cosf(a) * radius, center.y + sinf(a) * radius), IM_COL32_WHITE, 2.0f);
+    return changed;                                                       // 4. same contract as SliderFloat
+}
+
+L15_Knob("Yaw", &amp;gCamera.yaw, -180.0f, 180.0f, 30.0f);   // drives the engine camera directly</code></pre>
+<p>The lesson's joystick works the same way. While the item is active, the offset of the mouse from the centre (clamped to a ring) becomes a yaw/pitch <i>rate</i>, and the stick snaps back to the centre when you release it.</p>
+
+<h2>Drawing over the 3D world</h2>
+<p><code>Engine_WorldToScreen(world, &amp;screen)</code> wraps <code>gluProject</code> with the camera matrices from this frame and flips Y to ImGui's top-down convention. It returns <code>false</code> for points behind the camera. With it, any 3D position can carry 2D UI:</p>
+<pre><code class="cpp">ImDrawList *bg = ImGui::GetBackgroundDrawList();     // over the scene, under the windows
+for (int i = 0; i &lt; gEntityCount; i++)
+{
+    float top[3] = { gEntities[i].position[0], gEntities[i].position[1] + gEntities[i].scale[1] * 0.5f, gEntities[i].position[2] };
+    ImVec2 s;
+    if (!Engine_WorldToScreen(top, &amp;s)) continue;    // behind the camera
+    ImVec2 ts = ImGui::CalcTextSize(gEntities[i].name);
+    bg-&gt;AddText(ImVec2(s.x - ts.x * 0.5f, s.y - ts.y - 4), IM_COL32_WHITE, gEntities[i].name);
+}</code></pre>
+<p>For <b>screen-space brackets</b>, the lesson projects the 8 corners of each entity's box, takes the 2D min/max, and draws short L-shaped lines at each corner. That is the classic "target lock" look, and it scales naturally with distance.</p>
+
+<h3>Orientation gizmo</h3>
+<p>To show which way the world axes point, build the camera's <b>right</b> and <b>up</b> vectors (the same ones <code>gluLookAt</code> builds internally). Then project each world axis onto them. For axis X = (1,0,0), <code>dot(X, right)</code> is simply <code>right[0]</code>:</p>
+<pre><code class="cpp">ImVec2 tip(c.x + right[i] * len, c.y - up[i] * len);   // minus: screen Y points down
+bg-&gt;AddLine(c, tip, axisColour[i], 3.0f);</code></pre>
+<p>Drawing the axes from farthest to nearest (sorted by <code>dot(axis, forward)</code>) makes the overlap look right.</p>
+
+<h2>A clickable mini-map</h2>
+<p>A top-down map is a canvas whose coordinates are a scaled copy of the world's X/Z plane. Converting in both directions is one multiply and one add:</p>
+<pre><code class="cpp">float k = side * 0.5f / worldHalf;                                  // pixels per metre
+ImVec2 ep(mid.x + e-&gt;position[0] * k, mid.y + e-&gt;position[2] * k);  // world -&gt; map
+if (ImGui::IsItemActive())                                          // map -&gt; world
+{
+    gCamera.target[0] = (io.MousePos.x - mid.x) / k;
+    gCamera.target[2] = (io.MousePos.y - mid.y) / k;
+}</code></pre>
+
+<div class="tip"><b>Draw lists are cheap</b>
+<p>Hundreds of labels and lines per frame cost very little. ImGui batches them into a handful of draw calls. The expensive part is usually <code>CalcTextSize</code> on long strings, and even that is fast.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>World-space overlays are a big part of what makes an editor feel like an editor: light and camera icons, name tags, collision bounds, nav-mesh debug lines, sound radii, "you are here" markers. Many engines run a whole debug-draw system through <code>GetBackgroundDrawList()</code> (2D) next to a 3D line renderer. Custom widgets like the knob show up in curve editors, colour gradients, timelines and audio mixers. When you need a full 3D translate/rotate gizmo, ImGuizmo (lesson 19) is built exactly this way, on top of ImDrawList.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Draw a line on the background list from each <b>spinning</b> entity's screen position to the screen position of the world origin.</li>
+    <li>In the mini-map, <b>right-click</b> an entity dot to select it (<code>IsItemClicked(ImGuiMouseButton_Right)</code> plus the hit test that is already there).</li>
+    <li>Write a <code>L15_ToggleSwitch(const char *id, bool *v)</code> widget: a pill-shaped track (<code>AddRectFilled</code> with rounding = height/2) and a circle that sits left when off and right when on. Use it for <code>gWireframe</code>.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) in L15_WorldOverlays()
+float origin[3] = { 0, 0, 0 };
+ImVec2 so;
+if (Engine_WorldToScreen(origin, &amp;so))
+    for (int i = 0; i &lt; gEntityCount; i++)
+    {
+        ImVec2 s;
+        if (gEntities[i].spin &amp;&amp; Engine_WorldToScreen(gEntities[i].position, &amp;s))
+            bg-&gt;AddLine(so, s, IM_COL32(120, 200, 255, 160), 1.5f);
+    }
+
+// 2) in L15_MiniMap(), after the entity loop
+if (hoveredEntity &gt;= 0 &amp;&amp; ImGui::IsItemClicked(ImGuiMouseButton_Right))
+    gSelectedEntity = hoveredEntity;
+
+// 3) toggle switch
+static bool L15_ToggleSwitch(const char *id, bool *v)
+{
+    float h = ImGui::GetFrameHeight(), w = h * 1.8f;
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    bool clicked = ImGui::InvisibleButton(id, ImVec2(w, h));
+    if (clicked) *v = !*v;
+    ImDrawList *dl = ImGui::GetWindowDrawList();
+    dl-&gt;AddRectFilled(p, ImVec2(p.x + w, p.y + h), *v ? IM_COL32(66, 150, 250, 255) : IM_COL32(80, 80, 90, 255), h * 0.5f);
+    float cx = *v ? p.x + w - h * 0.5f : p.x + h * 0.5f;
+    dl-&gt;AddCircleFilled(ImVec2(cx, p.y + h * 0.5f), h * 0.5f - 2.0f, IM_COL32_WHITE);
+    return clicked;
+}
+// usage
+L15_ToggleSwitch("##wire", &amp;gWireframe); ImGui::SameLine(); ImGui::Text("Wireframe");</code></pre>
+  </details>
+</div>

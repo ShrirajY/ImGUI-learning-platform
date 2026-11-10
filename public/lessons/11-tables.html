@@ -1,0 +1,159 @@
+<h2>Why tables?</h2>
+<p>As soon as an editor shows <i>many</i> objects with <i>several</i> fields each, you want a spreadsheet: aligned columns, sortable headers, resizable widths, maybe hidden columns. Think entity lists, asset databases, profiler captures, input bindings. Dear ImGui's Tables API does all of that, and it is also the best general-purpose layout tool (lesson 7 used it for the property grid).</p>
+
+<h2>The basic shape</h2>
+<pre><code class="cpp">if (ImGui::BeginTable("##entities", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg))
+{
+    ImGui::TableSetupColumn("Name");        // optional: column names + flags
+    ImGui::TableSetupColumn("Mesh");
+    ImGui::TableSetupColumn("Visible");
+    ImGui::TableHeadersRow();               // optional: draw the header row
+
+    for (int i = 0; i &lt; gEntityCount; i++)
+    {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(gEntities[i].name);
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(gMeshNames[gEntities[i].mesh]);
+        ImGui::TableNextColumn(); ImGui::Text("%s", gEntities[i].visible ? "yes" : "no");
+    }
+    ImGui::EndTable();                      // only if BeginTable returned true
+}</code></pre>
+<p><code>TableNextColumn()</code> moves to the next cell, wrapping to a new row when needed. <code>TableSetColumnIndex(n)</code> jumps to a specific column. You <b>must</b> call one of them before submitting content: after <code>TableNextRow()</code> alone, nothing will show.</p>
+
+<h2>Table flags</h2>
+<table>
+  <tr><th>ImGuiTableFlags_</th><th>Effect</th></tr>
+  <tr><td><code>Borders</code></td><td>Inner and outer borders (or pick <code>BordersInnerV</code>, <code>BordersOuter</code>...)</td></tr>
+  <tr><td><code>RowBg</code></td><td>Alternating row colours. Makes wide tables much easier to read</td></tr>
+  <tr><td><code>Resizable</code></td><td>Drag column borders to resize</td></tr>
+  <tr><td><code>Reorderable</code></td><td>Drag headers to reorder columns (needs <code>TableHeadersRow</code>)</td></tr>
+  <tr><td><code>Hideable</code></td><td>Right-click a header to hide/show columns</td></tr>
+  <tr><td><code>Sortable</code></td><td>Click headers to sort. You do the sorting (see below). Add <code>SortMulti</code> for shift+click</td></tr>
+  <tr><td><code>ScrollY</code></td><td>The table becomes its own scrolling region. <b>Needs an outer size</b> in <code>BeginTable</code></td></tr>
+  <tr><td><code>SizingStretchProp</code></td><td>Columns stretch to fill the width, with weights proportional to their content</td></tr>
+</table>
+<p>The lesson code puts checkboxes for these flags above the table (<code>CheckboxFlags</code> toggles one bit in an int), so you can flip them live and see the effect.</p>
+
+<h2>Columns</h2>
+<pre><code class="cpp">// label, flags, width (px for fixed, weight for stretch), user ID
+ImGui::TableSetupColumn("#",        ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 30.0f, COL_INDEX);
+ImGui::TableSetupColumn("Name",     ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_DefaultSort, 1.2f, COL_NAME);
+ImGui::TableSetupColumn("Position", ImGuiTableColumnFlags_WidthStretch, 2.0f, COL_POSITION);
+ImGui::TableSetupColumn("Color",    ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort, 45.0f, COL_COLOR);
+ImGui::TableSetupScrollFreeze(0, 1);   // freeze 0 columns, 1 row (the header) while scrolling
+ImGui::TableHeadersRow();</code></pre>
+<p>Useful column flags: <code>WidthFixed</code>, <code>WidthStretch</code>, <code>DefaultSort</code>, <code>NoSort</code>, <code>NoHide</code>, <code>NoResize</code>, <code>PreferSortDescending</code>, <code>DefaultHide</code>.</p>
+
+<h2>Sorting: sort an index array, not your entities</h2>
+<p>ImGui never sorts your data. It gives you <b>sort specs</b> (which column, ascending or descending) and a <code>SpecsDirty</code> flag that says "the user clicked a header, sort again".</p>
+<div class="warn"><b>Don't reorder gEntities[]</b>
+<p>Sorting the actual entity array would change every entity's index. <code>gSelectedEntity</code> would then point at a different object, as would any other index stored elsewhere (in an editor, a script, the undo stack...). The table is a <i>view</i>. Keep a separate array of indices and sort that.</p></div>
+<pre><code class="cpp">static int order[MAX_ENTITIES], orderCount = -1;
+static const ImGuiTableSortSpecs *sortSpecs;   // qsort has no user-data pointer
+
+static int CompareEntities(const void *pa, const void *pb)
+{
+    int ia = *(const int *)pa, ib = *(const int *)pb;
+    for (int n = 0; n &lt; sortSpecs-&gt;SpecsCount; n++)
+    {
+        const ImGuiTableColumnSortSpecs *s = &amp;sortSpecs-&gt;Specs[n];
+        int d = 0;
+        switch (s-&gt;ColumnUserID)
+        {
+        case COL_NAME: d = _stricmp(gEntities[ia].name, gEntities[ib].name); break;
+        case COL_MESH: d = gEntities[ia].mesh - gEntities[ib].mesh; break;
+        }
+        if (d) return (s-&gt;SortDirection == ImGuiSortDirection_Ascending) ? d : -d;
+    }
+    return ia - ib;   // tie-break keeps the order stable
+}
+
+// after TableHeadersRow():
+ImGuiTableSortSpecs *specs = ImGui::TableGetSortSpecs();
+if ((specs &amp;&amp; specs-&gt;SpecsDirty) || orderCount != gEntityCount)
+{
+    for (int i = 0; i &lt; gEntityCount; i++) order[i] = i;
+    orderCount = gEntityCount;
+    sortSpecs = specs;
+    qsort(order, gEntityCount, sizeof(int), CompareEntities);
+    specs-&gt;SpecsDirty = false;
+}
+// rows: for (row...) { int i = order[row]; Entity *e = &amp;gEntities[i]; ... }</code></pre>
+<p>Use the column's <b>user ID</b> (the 4th argument of <code>TableSetupColumn</code>) in the switch rather than <code>ColumnIndex</code>. That way sorting stays correct after the user reorders columns. We also re-sort when the entity count changes, since the old index list would be out of date.</p>
+<div class="tip"><b>Why not sort every frame?</b>
+<p>For 128 entities it would be cheap, but it would feel wrong. If you sort by position and drag an entity's X value, the row would jump around under your mouse while you edit it. Sorting only when the specs change (or the list changes size) keeps rows still while you work.</p></div>
+
+<h2>Selectable rows</h2>
+<p>To make a whole row clickable, put a <code>Selectable</code> in the first column with <code>ImGuiSelectableFlags_SpanAllColumns</code>. Add <code>AllowOverlap</code> so the widgets in the other cells (checkbox, colour swatch) can still be clicked on top of it:</p>
+<pre><code class="cpp">ImGui::TableNextRow(ImGuiTableRowFlags_None, rowHeight);
+ImGui::TableSetColumnIndex(0);
+if (ImGui::Selectable(label, gSelectedEntity == i,
+                      ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap,
+                      ImVec2(0, rowHeight)))
+    gSelectedEntity = i;</code></pre>
+
+<h2>Editable cells</h2>
+<p>Each cell can hold any widget. Two rules make it work:</p>
+<ol>
+  <li><b>PushID per row.</b> Every row has a <code>"##name"</code> input, a <code>"##vis"</code> checkbox and so on. Without <code>PushID(i)</code>, all rows share the same IDs and editing one edits... whichever ImGui finds first.</li>
+  <li><b><code>SetNextItemWidth(-FLT_MIN)</code></b> before each widget, so it fills the cell instead of using the default width and leaving room for a label.</li>
+</ol>
+<pre><code class="cpp">ImGui::PushID(i);
+ImGui::TableNextColumn();
+ImGui::SetNextItemWidth(-FLT_MIN);
+ImGui::InputText("##name", e-&gt;name, sizeof(e-&gt;name));
+if (ImGui::IsItemActivated()) gSelectedEntity = i;     // clicking into a cell selects the row
+
+ImGui::TableNextColumn();
+ImGui::Checkbox("##vis", &amp;e-&gt;visible);
+
+ImGui::TableNextColumn();
+ImGui::ColorEdit4("##col", e-&gt;color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+ImGui::PopID();</code></pre>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Tables are great for bulk editing: hide the 40 lights in a level with a few checkbox clicks, sort by name to find duplicates, sort by position to find objects that fell below the floor. The "sort a view, not the data" rule comes back everywhere: the asset browser, the profiler, the log. For thousands of rows, combine the table with <code>ImGuiListClipper</code> (lesson 8). It works inside <code>ScrollY</code> tables as is, iterating over <code>order[]</code>.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <b>"Tex"</b> column with a texture combo (use <code>gTextures</code>, -1 = None) and make it sortable by texture index.</li>
+    <li>Tint the row background red for hidden entities: <code>ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(120, 30, 30, 90))</code> right after <code>TableNextRow</code>.</li>
+    <li>Wrap the row loop in an <code>ImGuiListClipper</code> and press "Add 10 cubes" until the scene is full. Does sorting still work?</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. new enum value L11_COL_TEXTURE, table column count 7
+ImGui::TableSetupColumn("Tex", ImGuiTableColumnFlags_WidthFixed, 90.0f, L11_COL_TEXTURE);
+// comparator:
+case L11_COL_TEXTURE: d = a-&gt;texture - b-&gt;texture; break;
+// cell:
+ImGui::TableNextColumn();
+ImGui::SetNextItemWidth(-FLT_MIN);
+const char *prev = (e-&gt;texture &gt;= 0) ? gTextures[e-&gt;texture].name : "None";
+if (ImGui::BeginCombo("##tex", prev))
+{
+    if (ImGui::Selectable("None", e-&gt;texture &lt; 0)) e-&gt;texture = -1;
+    for (int t = 0; t &lt; gTextureCount; t++)
+    {
+        ImGui::PushID(t);
+        if (ImGui::Selectable(gTextures[t].name, e-&gt;texture == t)) e-&gt;texture = t;
+        ImGui::PopID();
+    }
+    ImGui::EndCombo();
+}
+
+// 2.
+ImGui::TableNextRow(ImGuiTableRowFlags_None, rowHeight);
+if (!e-&gt;visible) ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg1, IM_COL32(120, 30, 30, 90));
+
+// 3. yes - the clipper only decides WHICH rows to draw, order[] decides WHAT they are
+ImGuiListClipper clipper;
+clipper.Begin(L11_orderCount, rowHeight);
+while (clipper.Step())
+    for (int row = clipper.DisplayStart; row &lt; clipper.DisplayEnd; row++)
+    {
+        int i = L11_order[row];
+        // ... same row code ...
+    }</code></pre>
+  </details>
+</div>

@@ -1,0 +1,156 @@
+<h2>The editor pair</h2>
+<p>Open any engine editor and you will find the same two panels: a <b>Hierarchy</b> (or Outliner, or Scene Tree) listing every object, and an <b>Inspector</b> (or Details, or Properties) showing the selected object's fields. They are connected by one value: <b>the selection</b>. In our engine that is <code>gSelectedEntity</code>, and the 3D view writes to it too when you click an object.</p>
+<div class="mock"><div class="mock-title">Hierarchy</div><div class="mock-body">
+  <div>&#9662; Scene</div>
+  <div style="padding-left:20px">Ground</div>
+  <div style="padding-left:20px">Crate</div>
+  <div style="padding-left:20px;background:#4296fa66">Planet</div>
+  <div style="padding-left:20px">Pyramid</div>
+  <div style="padding-left:20px">Pillar</div>
+</div></div>
+<div class="mock" style="margin-left:12px"><div class="mock-title">Inspector</div><div class="mock-body">
+  <div class="mock-row"><span class="mock-check">&#10003;</span><span class="mock-frame" style="flex:1">Planet</span></div>
+  <div style="background:#4296fa4f;padding:1px 6px">&#9662; Transform</div>
+  <div class="mock-row"><span style="width:70px">Position</span><span class="mock-frame">0.00</span><span class="mock-frame">1.00</span><span class="mock-frame">0.00</span></div>
+  <div class="mock-row"><span style="width:70px">Scale</span><span class="mock-frame">2.00</span><span class="mock-frame">2.00</span><span class="mock-frame">2.00</span></div>
+</div></div>
+
+<h2>Editor state vs scene data</h2>
+<p>Before writing any code, decide where each piece of state lives. This split will save you a lot of trouble later, when you add saving, undo and play mode:</p>
+<table>
+  <tr><th>Scene data (engine)</th><th>Editor state (UI only)</th></tr>
+  <tr><td><code>gEntities[]</code>: name, transform, mesh, colour, texture</td><td>Which entity is being renamed, and its edit buffer</td></tr>
+  <tr><td><code>gEntityCount</code></td><td>"Group by mesh" toggle, open/closed tree nodes</td></tr>
+  <tr><td><code>gSelectedEntity</code> <span class="muted">(shared with picking)</span></td><td>Pending delete / duplicate requests</td></tr>
+  <tr><td></td><td>"Scroll to selection" flag</td></tr>
+</table>
+<p>Scene data gets saved to disk and simulated. Editor state never does. In the lesson code, all editor state sits in one struct, <code>L09_EditorState</code>, so it is obvious what belongs to the UI. ImGui widgets edit the scene data <b>directly</b> through pointers, so there is no copy to keep in sync.</p>
+
+<h2>TreeNodeEx and its flags</h2>
+<p><code>TreeNode("label")</code> is fine for debug trees. For a hierarchy you want control over how nodes look and react, so use <code>TreeNodeEx(id, flags, fmt, ...)</code>:</p>
+<table>
+  <tr><th>ImGuiTreeNodeFlags_</th><th>Why a hierarchy wants it</th></tr>
+  <tr><td><code>OpenOnArrow</code></td><td>A single click selects; only clicking the arrow opens/closes</td></tr>
+  <tr><td><code>OpenOnDoubleClick</code></td><td>Double-click on the label also toggles open</td></tr>
+  <tr><td><code>SpanAvailWidth</code></td><td>Highlight and hit-box extend to the right edge (full-row selection)</td></tr>
+  <tr><td><code>Leaf</code></td><td>No arrow; the node has no children</td></tr>
+  <tr><td><code>NoTreePushOnOpen</code></td><td>Don't indent or push an ID, so you don't call <code>TreePop()</code> (handy for leaves)</td></tr>
+  <tr><td><code>Selected</code></td><td>Draw the row highlighted. You set this from your own selection</td></tr>
+  <tr><td><code>DefaultOpen</code></td><td>Start expanded the first time</td></tr>
+</table>
+<pre><code class="cpp">ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen
+                         | ImGuiTreeNodeFlags_SpanAvailWidth;
+if (gSelectedEntity == i) flags |= ImGuiTreeNodeFlags_Selected;
+
+ImGui::PushID(i);
+ImGui::TreeNodeEx("##node", flags, "%s", e-&gt;name);   // ID = "##node" inside PushID(i)
+if (ImGui::IsItemClicked() &amp;&amp; !ImGui::IsItemToggledOpen())
+    gSelectedEntity = i;                              // click selects
+if (ImGui::IsItemHovered() &amp;&amp; ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+    Engine_FocusEntity(i);                            // double-click focuses the camera
+ImGui::PopID();</code></pre>
+<p><code>IsItemClicked()</code> fires on mouse-down over the item. The <code>!IsItemToggledOpen()</code> check stops a click on a node's arrow from also changing the selection. That matters for parent nodes, which have an arrow.</p>
+<div class="warn"><b>Leaf + NoTreePushOnOpen, or TreePop?</b>
+<p>A normal node that returns true must be closed with <code>TreePop()</code>. With <code>NoTreePushOnOpen</code>, nothing was pushed, so you must <b>not</b> call <code>TreePop()</code>. Mixing these up corrupts the ID stack. ImGui asserts at the end of the frame, and the message is not always obvious.</p></div>
+
+<div class="note"><b>Our scene is flat</b>
+<p>The mini engine has no parent/child links, so the code shows a root "Scene" node and, optionally, one folder node per mesh type. In a real engine, each entity stores a <code>parent</code> and a <code>firstChild</code>/<code>nextSibling</code>. You then draw the tree with a recursive function: TreeNodeEx with no <code>Leaf</code> flag if the entity has children, recurse into the children, then TreePop.</p></div>
+
+<h2>Selection that flows both ways</h2>
+<p>Because the hierarchy reads <code>gSelectedEntity</code> every frame to decide which row gets the <code>Selected</code> flag, clicking a mesh in the 3D view highlights its row on the next frame with no extra code. The one extra touch is scrolling the row into view. To detect a selection change that came from outside, compare against last frame's value:</p>
+<pre><code class="cpp">if (gSelectedEntity != ed.prevSelection) ed.scrollToSelection = true;
+// ... while drawing row i:
+if (i == gSelectedEntity &amp;&amp; ed.scrollToSelection) { ImGui::SetScrollHereY(); ed.scrollToSelection = false; }
+// ... end of frame:
+ed.prevSelection = gSelectedEntity;</code></pre>
+
+<h2>Context menus</h2>
+<p>There are two kinds of right-click menu:</p>
+<pre><code class="cpp">// 1. On an item: call right after the item (uses the last item's ID)
+if (ImGui::BeginPopupContextItem("##rowmenu"))
+{
+    if (ImGui::MenuItem("Rename", "F2"))  StartRename(i);
+    if (ImGui::MenuItem("Duplicate"))     ed.pendingDuplicate = i;
+    if (ImGui::MenuItem("Focus"))         Engine_FocusEntity(i);
+    if (ImGui::MenuItem("Delete", "Del")) ed.pendingDelete = i;
+    ImGui::EndPopup();
+}
+
+// 2. On empty space in the window (NoOpenOverItems = don't trigger over rows)
+if (ImGui::BeginPopupContextWindow("##create", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+{
+    for (int m = 0; m &lt; MESH_COUNT; m++)
+        if (ImGui::MenuItem(gMeshNames[m])) CreateEntity(m);
+    ImGui::EndPopup();
+}</code></pre>
+<div class="tip"><b>Passing flags to BeginPopupContext*</b>
+<p>The default flags value is <code>1</code>, which is <code>ImGuiPopupFlags_MouseButtonRight</code>. As soon as you pass your own flags you replace that default, so add <code>MouseButtonRight</code> back explicitly, as above.</p></div>
+
+<h2>Deferred deletion: never remove while iterating</h2>
+<p>This is the classic editor bug. You are inside <code>for (i = 0; i &lt; gEntityCount; i++)</code>, the user clicks "Delete" on row 2, and you call <code>Engine_RemoveEntity(2)</code> right there. Everything after index 2 shifts down by one. The loop then skips an entity, draws one row with the wrong ID, and the Inspector, drawn later in the same frame, may read past the end of the array.</p>
+<p>The fix is to <b>record the request</b> and apply it after all windows have been drawn:</p>
+<pre><code class="cpp">// inside the loop / inspector:
+if (ImGui::MenuItem("Delete")) ed.pendingDelete = i;
+
+// once per frame, after every window:
+void ApplyPendingActions(void)
+{
+    if (ed.pendingDelete &gt;= 0) Engine_RemoveEntity(ed.pendingDelete);
+    ed.pendingDelete = -1;
+}</code></pre>
+<p>The same goes for <b>Duplicate</b> and <b>Create</b>, because adding entities while iterating is just as dangerous with dynamic arrays (a <code>std::vector</code> may reallocate and leave your <code>Entity*</code> pointing at freed memory). Later, this "list of pending commands" is exactly what grows into an undo/redo system.</p>
+
+<h2>Inline rename</h2>
+<p>When renaming, draw an <code>InputText</code> in place of the tree node. Focus it on the first frame, commit on Enter, and cancel when it loses focus:</p>
+<pre><code class="cpp">if (ed.renameIndex == i)
+{
+    if (ed.renameFocus) { ImGui::SetKeyboardFocusHere(); ed.renameFocus = false; }
+    if (ImGui::InputText("##rename", ed.renameBuf, sizeof(ed.renameBuf),
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll))
+    { strcpy(e-&gt;name, ed.renameBuf); ed.renameIndex = -1; }
+    else if (ImGui::IsItemDeactivated())
+        ed.renameIndex = -1;          // Escape or clicked elsewhere
+}</code></pre>
+
+<h2>The Inspector</h2>
+<p>The Inspector is a property grid (lesson 7) pointed at <code>&amp;gEntities[gSelectedEntity]</code>. Two details matter:</p>
+<ul>
+  <li><b>Always validate the index</b> (<code>0 &lt;= sel &lt; gEntityCount</code>) at the top. The selection can be -1, or stale after a delete.</li>
+  <li><b><code>PushID(selectedIndex)</code></b> around the whole panel. If you are dragging the Position field and the selection changes under the mouse, ImGui would otherwise treat the "same" widget of the new entity as still active.</li>
+</ul>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>This pair is the backbone of every editor you will build. Hierarchy = view of the scene graph + selection + structural commands (create, delete, duplicate, reparent). Inspector = view of one object's components, with each <code>CollapsingHeader</code> being a component (Transform, Mesh Renderer, Behaviour). When you add a real component system, the Inspector becomes a loop over the entity's components, each one drawing its own header and property rows.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a visibility toggle at the right end of each hierarchy row: <code>ImGui::SameLine(ImGui::GetWindowWidth() - 40)</code> followed by <code>SmallButton(e-&gt;visible ? "o" : "-")</code>. Because the node spans the full width, you will need <code>ImGuiTreeNodeFlags_AllowOverlap</code> on it so the button can still be clicked.</li>
+    <li>Add <b>"Delete all hidden"</b> to the empty-space context menu. Do it with deferred deletion and make sure it works when several hidden entities are next to each other.</li>
+    <li>Make Ctrl+click on a row log <code>"Ctrl+clicked X"</code> instead of selecting (read <code>ImGui::GetIO().KeyCtrl</code>). This is where multi-select would start.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. in L09_EntityRow, add AllowOverlap to the flags, then after the TreeNodeEx:
+flags |= ImGuiTreeNodeFlags_AllowOverlap;
+// ...
+ImGui::SameLine(ImGui::GetWindowWidth() - 40);
+if (ImGui::SmallButton(e-&gt;visible ? "o" : "-")) e-&gt;visible = !e-&gt;visible;
+
+// 2. editor state: static bool L09_deleteHidden = false;
+if (ImGui::MenuItem("Delete all hidden")) L09_deleteHidden = true;
+// in L09_ApplyPendingActions(): walk BACKWARDS so removals don't shift unvisited entries
+if (L09_deleteHidden)
+{
+    for (int i = gEntityCount - 1; i &gt;= 0; i--)
+        if (!gEntities[i].visible) Engine_RemoveEntity(i);
+    L09_deleteHidden = false;
+}
+
+// 3.
+if (ImGui::IsItemClicked(ImGuiMouseButton_Left) &amp;&amp; !ImGui::IsItemToggledOpen())
+{
+    if (ImGui::GetIO().KeyCtrl) Engine_Log("Ctrl+clicked %s", e-&gt;name);
+    else                        gSelectedEntity = i;
+}</code></pre>
+  </details>
+</div>

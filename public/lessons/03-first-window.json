@@ -1,0 +1,27 @@
+{
+  "id": "03-first-window",
+  "title": "Your First Window",
+  "summary": "Begin/End, text, buttons, checkboxes and radio buttons: the widgets every engine panel starts with.",
+  "minutes": 15,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "What does <code>ImGui::Button(\"Save\")</code> return?",
+      "options": ["A handle you register a click callback on", "true only on the frame the button was clicked", "true while the mouse hovers it", "Nothing - it is void"],
+      "answer": 1,
+      "explain": "Immediate-mode widgets return the interaction result directly, so you just wrap them in an <code>if</code>."
+    },
+    {
+      "q": "<code>Begin()</code> returned false because the window is collapsed. What must you still do?",
+      "options": ["Nothing", "Call End()", "Call Begin() again", "Call ImGui::Render()"],
+      "answer": 1,
+      "explain": "Begin/End must always be paired. Only the widgets in between may be skipped."
+    },
+    {
+      "q": "Why is <code>ImGui::Text(entity.name)</code> risky?",
+      "options": ["It is slow", "Names can contain % which is treated as a format specifier", "Text() only accepts literals", "It leaks memory"],
+      "answer": 1,
+      "explain": "Use <code>TextUnformatted(name)</code> or <code>Text(\"%s\", name)</code> for user data."
+    }
+  ]
+}

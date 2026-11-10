@@ -1,0 +1,124 @@
+<h2>Why every engine has a profiler panel</h2>
+<p>"It feels slow" doesn't help you fix anything. A number does, and a graph of that number over time helps even more. Dear ImGui has two simple plotting widgets, a progress bar and the window flags you need for a heads-up display, which is enough to build a useful profiler.</p>
+
+<h2>The engine's frame-time ring buffer</h2>
+<p>Every frame, OGL.c writes the frame time in milliseconds into a fixed array and advances a write index:</p>
+<pre><code class="cpp">#define FRAME_HISTORY 120
+float gFrameTimes[FRAME_HISTORY];     // milliseconds, ring buffer
+int   gFrameTimeOffset = 0;           // next write position
+
+gFrameTimes[gFrameTimeOffset] = gDeltaTime * 1000.0f;
+gFrameTimeOffset = (gFrameTimeOffset + 1) % FRAME_HISTORY;</code></pre>
+<p>So <code>gFrameTimeOffset</code> always points at the <b>oldest</b> sample. That is exactly what the plot functions want as <code>values_offset</code>.</p>
+
+<h2>PlotLines and PlotHistogram</h2>
+<pre><code class="cpp">void PlotLines    (const char* label, const float* values, int values_count, int values_offset = 0,
+                   const char* overlay_text = NULL, float scale_min = FLT_MAX, float scale_max = FLT_MAX,
+                   ImVec2 graph_size = ImVec2(0, 0), int stride = sizeof(float));
+void PlotHistogram(/* same parameters */);</code></pre>
+<table>
+  <tr><th>Parameter</th><th>Use it for</th></tr>
+  <tr><td><code>values_offset</code></td><td>Index of the first (oldest) value to draw. It wraps around, so a ring buffer scrolls naturally.</td></tr>
+  <tr><td><code>overlay_text</code></td><td>Text drawn centred on top of the plot, e.g. <code>"avg 16.6 ms"</code></td></tr>
+  <tr><td><code>scale_min / scale_max</code></td><td>Fixed vertical range. <code>FLT_MAX</code> auto-fits to the data. A fixed scale keeps spikes in proportion.</td></tr>
+  <tr><td><code>graph_size</code></td><td><code>ImVec2(-FLT_MIN, 90)</code> = full width, 90 px tall</td></tr>
+  <tr><td><code>stride</code></td><td>Plot one field from an array of structs, e.g. <code>sizeof(MyStats)</code></td></tr>
+</table>
+<pre><code class="cpp">char overlay[64];
+_snprintf(overlay, sizeof(overlay) - 1, "avg %.2f ms", avgMs);
+ImGui::PlotLines("##frametimes", gFrameTimes, FRAME_HISTORY, gFrameTimeOffset,
+                 overlay, 0.0f, 33.3f, ImVec2(-FLT_MIN, 90));</code></pre>
+<div class="tip"><b>Fixed scale or auto scale?</b>
+<p>Auto scale turns a steady 16.6 ms with 0.1 ms of jitter into a wildly jumping line. For frame times, fix the range from 0 to roughly two frame budgets (33 ms at 60 FPS). Spikes then look like spikes and noise looks like noise.</p></div>
+
+<h3>Min / avg / max</h3>
+<p>One loop over the buffer gives the three numbers people actually read. <b>Max</b> matters most for games: an average of 8 ms with one 60 ms hitch every second still feels like stutter.</p>
+
+<h2>ProgressBar as a budget meter</h2>
+<pre><code class="cpp">float used = avgMs / (1000.0f / targetFps);          // 1.0 = exactly on budget
+ImGui::PushStyleColor(ImGuiCol_PlotHistogram, used &lt;= 1.0f ? green : red);  // bar fill colour
+ImGui::ProgressBar(used &gt; 1.0f ? 1.0f : used, ImVec2(-FLT_MIN, 0), "12.1 / 16.7 ms");
+ImGui::PopStyleColor();</code></pre>
+<p><code>ProgressBar(fraction, size, overlay)</code> takes a fraction from 0 to 1. Pass <code>NULL</code> as the overlay for an automatic percentage, or <code>""</code> for no text at all. That's useful for the thin per-section bars in the lesson.</p>
+
+<h2>A heads-up overlay</h2>
+<p>A HUD is just a window with the decorations and interactions removed and its position forced every frame:</p>
+<pre><code class="cpp">ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration        // no title bar, resize, scrollbars
+                       | ImGuiWindowFlags_AlwaysAutoResize    // fit the content
+                       | ImGuiWindowFlags_NoSavedSettings     // don't remember it in imgui.ini
+                       | ImGuiWindowFlags_NoFocusOnAppearing  // don't steal focus
+                       | ImGuiWindowFlags_NoNav               // skip in keyboard navigation
+                       | ImGuiWindowFlags_NoMove;
+
+const ImGuiViewport *vp = ImGui::GetMainViewport();
+ImVec2 pos(vp-&gt;WorkPos.x + vp-&gt;WorkSize.x - 10, vp-&gt;WorkPos.y + 10);   // top-right corner
+ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(1.0f, 0.0f));    // pivot = window's top-right
+ImGui::SetNextWindowBgAlpha(0.35f);
+ImGui::Begin("##PerfHUD", NULL, flags);</code></pre>
+<ul>
+  <li><b>WorkPos / WorkSize</b> describe the usable screen area. If you add a main menu bar later (lesson 18), they shrink to exclude it and the HUD moves below it automatically.</li>
+  <li><b>The pivot</b> says which point of the window lands on <code>pos</code>. <code>(0,0)</code> is the window's top-left and <code>(1,1)</code> its bottom-right. With the right pivot you never need to know the window's size.</li>
+  <li><code>BeginPopupContextWindow()</code> opens a menu when you right-click anywhere in the window. The lesson uses it to pick a corner.</li>
+</ul>
+
+<h2>A scope profiler in 30 lines</h2>
+<p>Frame time tells you <i>that</i> a frame was slow, not <i>why</i>. Wrap sections of code in begin/end markers that read the high-resolution counter (<code>windows.h</code> is already included):</p>
+<pre><code class="cpp">static LONGLONG L14_Now(void) { LARGE_INTEGER t; QueryPerformanceCounter(&amp;t); return t.QuadPart; }
+
+void L14_Begin(const char *name) { L14_Get(name)-&gt;start = L14_Now(); }
+void L14_End(const char *name)
+{
+    L14_Section *s = L14_Get(name);
+    s-&gt;lastMs = (float)((L14_Now() - s-&gt;start) * 1000.0 / L14_freq.QuadPart);
+    s-&gt;history[s-&gt;historyOffset] = s-&gt;lastMs;                 // its own ring buffer
+    s-&gt;historyOffset = (s-&gt;historyOffset + 1) % FRAME_HISTORY;
+}
+
+// C++ RAII version: End() runs automatically when the scope closes
+struct L14_Scope { const char *name; L14_Scope(const char *n) : name(n) { L14_Begin(n); } ~L14_Scope() { L14_End(name); } };</code></pre>
+<p>Each section keeps its own history, so you can plot it with the same <code>PlotLines</code> call. Call <code>QueryPerformanceFrequency</code> once in <code>Lesson_Init()</code> to convert ticks to milliseconds.</p>
+
+<h2>VSync and what you are really measuring</h2>
+<p>With VSync on (<code>gVSync = true</code>), <code>SwapBuffers</code> waits for the monitor, so the frame time sits at 16.7 ms on a 60 Hz screen <b>no matter how little work you do</b>. Turn it off and the frame time drops to your real CPU+GPU cost. Then move the <b>Fake work</b> slider and watch the "Fake work" section and the frame graph climb together.</p>
+<div class="warn"><b>Scope timers measure CPU time only</b>
+<p>OpenGL calls return before the GPU has finished. A <code>glDrawArrays</code> can "cost" 0.01 ms on the CPU while the GPU spends 5 ms on it. Measuring GPU time takes timer queries (<code>GL_TIME_ELAPSED</code>), which are beyond fixed-function GL.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Real engines build exactly this, just bigger. They use named scopes with nesting (a stack), per-thread timelines and a capture button that freezes a few seconds of history to inspect. When you outgrow it, reach for Tracy or Optick, which use the same "macro at the top of a scope" idea. Keep the always-on corner HUD as well: it is the first thing you look at when a level suddenly feels heavy, and it costs almost nothing.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a "<b>Freeze</b>" checkbox. Each frame, copy <code>gFrameTimes</code> into a private array and plot that array instead. While Freeze is on, stop copying, so the graph holds still and you can inspect a spike.</li>
+    <li>Count <b>hitches</b>: frames in the buffer slower than 2x the average. Show the count in the HUD in red when it isn't zero.</li>
+    <li>Add a "Scene" section that times a loop computing the distance from the camera target to every entity, and display the result as a <code>PlotHistogram</code> of distances (one bar per entity).</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) freeze
+static bool  freeze = false;
+static float frozen[FRAME_HISTORY];
+static int   frozenOffset = 0;
+ImGui::Checkbox("Freeze", &amp;freeze);
+if (!freeze) { memcpy(frozen, gFrameTimes, sizeof(frozen)); frozenOffset = gFrameTimeOffset; }
+ImGui::PlotLines("##frozen", frozen, FRAME_HISTORY, frozenOffset, NULL, 0.0f, 33.3f, ImVec2(-FLT_MIN, 90));
+
+// 2) hitches (inside the HUD window)
+float avg = Engine_AverageFrameTimeMs();
+int hitches = 0;
+for (int i = 0; i &lt; FRAME_HISTORY; i++) if (gFrameTimes[i] &gt; avg * 2.0f) hitches++;
+if (hitches) ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "%d hitches", hitches);
+
+// 3) distances
+static float dist[MAX_ENTITIES];
+L14_Begin("Scene");
+for (int i = 0; i &lt; gEntityCount; i++)
+{
+    float dx = gEntities[i].position[0] - gCamera.target[0];
+    float dy = gEntities[i].position[1] - gCamera.target[1];
+    float dz = gEntities[i].position[2] - gCamera.target[2];
+    dist[i] = sqrtf(dx * dx + dy * dy + dz * dz);
+}
+L14_End("Scene");
+ImGui::PlotHistogram("Distances", dist, gEntityCount, 0, NULL, 0.0f, FLT_MAX, ImVec2(-FLT_MIN, 60));</code></pre>
+  </details>
+</div>

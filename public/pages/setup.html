@@ -1,0 +1,61 @@
+<h1>Setup</h1>
+<p class="lead">There are two parts: the <b>starter template</b>, which you can forward to anyone, and this <b>learning platform</b>.</p>
+
+<h2>1. Starter template (ImGui + OpenGL)</h2>
+<p>The minimal project: a Win32 window, an OpenGL triangle and one ImGui window. It is the same <code>OGL.c</code> structure used throughout the lessons.</p>
+<p>
+  <a class="btn primary" href="downloads/ImGui_OpenGL_Template.zip" download>&#11015; Download ImGui_OpenGL_Template.zip</a>
+  <a class="btn ghost" href="downloads/ImGui_OpenGL_Setup_Guide.md" target="_blank">Setup guide (.md)</a>
+</p>
+<pre><code class="txt">ImGui_OpenGL_Template/
+  external/imgui/   Dear ImGui core + imgui_impl_win32 + imgui_impl_opengl2
+  OGL.c             window + OpenGL rendering + ImGui (compiled as C++ with /TP)
+  run.bat           compile -> link -> run
+  README.txt</code></pre>
+<h3>Build it</h3>
+<ol>
+  <li>Install <b>Visual Studio 2022</b> (Community is free) with <b>Desktop development with C++</b>.</li>
+  <li>Open <b>x64 Native Tools Command Prompt for VS 2022</b> from the Start menu.</li>
+  <li><code>cd</code> into the unzipped folder and type <code>run.bat</code>.</li>
+</ol>
+<pre><code class="bat">cl.exe /c /EHsc /std:c++17 /TP /I external/imgui OGL.c external/imgui/imgui*.cpp ... /Fo"intermediate\\"
+link.exe intermediate\*.obj User32.lib GDI32.lib OpenGL32.lib /SUBSYSTEM:WINDOWS /OUT:bin\OGL.exe
+bin\OGL.exe</code></pre>
+<div class="note"><b>Why /TP?</b><p>Dear ImGui is C++ (namespaces like <code>ImGui::Begin</code>, default arguments). <code>/TP</code> tells MSVC to compile every file, including <code>OGL.c</code>, as C++.</p></div>
+
+<h2>2. This learning platform</h2>
+<table>
+  <tr><th>File</th><th>What it does</th></tr>
+  <tr><td><code>setup.bat</code></td><td>Run once. Checks for and installs <b>Node.js</b> (winget), checks for and offers to install the <b>Visual Studio C++ Build Tools</b>, makes sure the <b>Dear ImGui</b> sources are in <code>sandbox/external/imgui</code> (copying them from <code>../setup</code> or downloading them from GitHub), then does a test build.</td></tr>
+  <tr><td><code>run.bat</code></td><td>Starts the local server on <code>http://localhost:5173</code> and opens your browser. Runs setup automatically the first time.</td></tr>
+</table>
+
+<h3>How Build &amp; Run works</h3>
+<ol>
+  <li>The browser sends your editor code to the local Node server, which listens on 127.0.0.1 only.</li>
+  <li>The server writes it to <code>sandbox/work/Lesson.inl</code>.</li>
+  <li>It compiles <code>sandbox/engine/OGL.c</code>, which <code>#include</code>s <code>Lesson.inl</code> at the bottom, using <code>cl.exe /TP</code>. The ImGui library is compiled once and cached in <code>sandbox/cache/obj</code>.</li>
+  <li>It links the exe, closes any previous lesson window, and launches the new one.</li>
+  <li>Compiler errors are mapped back to lines in the editor. Click an error to jump to it.</li>
+</ol>
+
+<h3>Folder layout</h3>
+<pre><code class="txt">ImGUI-learning-platform/
+  setup.bat, run.bat
+  server/            Node.js server (no npm packages) + MSVC build pipeline
+  public/            the website (HTML/CSS/JS) and lessons (html + starter code + quiz)
+  sandbox/
+    engine/OGL.c     the mini engine host your lesson code is compiled into
+    external/imgui/  Dear ImGui sources
+    cache/obj/       compiled ImGui (created on first build)
+    work/            Lesson.inl + ImGuiLab.exe (created on build)</code></pre>
+
+<h2>Troubleshooting</h2>
+<table>
+  <tr><th>Problem</th><th>Fix</th></tr>
+  <tr><td>Status pill says <b>offline</b></td><td>Start the site with <code>run.bat</code>. Opening <code>index.html</code> directly cannot compile anything.</td></tr>
+  <tr><td>Status pill says <b>MSVC missing</b></td><td>Run <code>setup.bat</code> again and accept the Build Tools install, or install VS 2022 with the C++ workload.</td></tr>
+  <tr><td>Port 5173 already in use</td><td>The site is probably already running. Otherwise run <code>set PORT=5174</code> and then <code>run.bat</code>.</td></tr>
+  <tr><td>First build is slow</td><td>The first build compiles the ImGui library once (about 10-40 s). After that, builds take about 2-3 s.</td></tr>
+  <tr><td>Lesson window doesn't appear</td><td>Check the taskbar, since it may have opened behind the browser. Press <b>Stop</b>, then <b>Build &amp; Run</b> again.</td></tr>
+</table>

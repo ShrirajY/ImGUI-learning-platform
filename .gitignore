@@ -1,0 +1,14 @@
+# Created by setup.bat / builds - machine specific
+.setup_done
+.install_id
+sandbox/work/
+sandbox/work-*/
+sandbox/cache/
+*.exe
+*.obj
+*.pdb
+*.ilk
+imgui.ini
+Log.txt
+console_history.txt
+node_modules/

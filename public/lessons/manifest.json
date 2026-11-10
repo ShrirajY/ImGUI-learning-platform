@@ -1,0 +1,10 @@
+{
+  "sections": [
+    { "title": "Getting Started",      "lessons": ["00-welcome", "01-immediate-mode", "02-integration"] },
+    { "title": "Core Widgets",         "lessons": ["03-first-window", "04-input-widgets", "05-colors", "06-ids"] },
+    { "title": "Layout & Structure",   "lessons": ["07-layout", "08-combos-lists", "09-hierarchy-inspector"] },
+    { "title": "Editor Features",      "lessons": ["10-menus-popups", "11-tables", "12-console", "13-input-capture-dragdrop"] },
+    { "title": "Visuals & Tools",      "lessons": ["14-plots-profiler", "15-drawlist", "16-textures-assets", "17-styling-fonts"] },
+    { "title": "Putting It Together",  "lessons": ["18-editor-capstone", "19-next-steps"] }
+  ]
+}

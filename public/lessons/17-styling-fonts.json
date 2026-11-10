@@ -1,0 +1,27 @@
+{
+  "id": "17-styling-fonts",
+  "title": "Styling, Themes & Fonts",
+  "summary": "Use built-in themes, edit ImGuiStyle sizes and colours, write a custom engine theme, apply temporary Push/Pop styles, load TTF fonts for body, headings and code, and scale for DPI.",
+  "minutes": 25,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "When must you call <code>io.Fonts-&gt;AddFontFromFileTTF()</code> in this engine?",
+      "options": ["Inside Lesson_UI, right before using the font", "In Lesson_Init, before the first frame builds the font texture", "After ImGui::Render()", "Any time; ImGui reloads automatically"],
+      "answer": 1,
+      "explain": "The atlas is locked during a frame and baked into a texture by the backend's first <code>NewFrame()</code>. Load every font and size up front."
+    },
+    {
+      "q": "You call <code>style.ScaleAllSizes(1.5f)</code> every time the user moves the scale slider. What goes wrong?",
+      "options": ["Nothing", "Sizes multiply on top of each other and grow without bound", "Fonts become blurry", "Colours reset"],
+      "answer": 1,
+      "explain": "ScaleAllSizes multiplies the current values. Rebuild a fresh <code>ImGuiStyle</code> and scale that once."
+    },
+    {
+      "q": "What happens if you <code>PushStyleColor</code> twice but <code>PopStyleColor()</code> only once?",
+      "options": ["The second push is ignored", "The extra colour leaks into later widgets and ImGui asserts at end of frame", "ImGui pops it automatically at End()", "Compile error"],
+      "answer": 1,
+      "explain": "Pushes and pops must balance. <code>PopStyleColor(count)</code> pops several at once."
+    }
+  ]
+}

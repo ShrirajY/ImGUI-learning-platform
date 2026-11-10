@@ -1,0 +1,33 @@
+{
+  "id": "04-input-widgets",
+  "title": "Sliders, Drags & Text Input",
+  "summary": "SliderFloat, DragFloat3, InputFloat/Int and InputText, format strings, clamp and logarithmic flags, and the IsItemActivated / IsItemDeactivatedAfterEdit pattern behind undo systems.",
+  "minutes": 20,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "You Ctrl+Click a scale slider (range 0.01..100) and type 0. How do you prevent that?",
+      "options": ["Use a bigger v_min", "Pass <code>ImGuiSliderFlags_AlwaysClamp</code>", "Use <code>InputFloat</code> instead", "It can't happen"],
+      "answer": 1,
+      "explain": "By default typed values may go out of range. <code>AlwaysClamp</code> clamps typed input too."
+    },
+    {
+      "q": "What is the correct third argument for <code>InputText(\"Name\", e-&gt;name, ???)</code> where <code>name</code> is <code>char[32]</code>?",
+      "options": ["<code>strlen(e-&gt;name)</code>", "<code>sizeof(e-&gt;name)</code>", "<code>31</code>", "<code>sizeof(char*)</code>"],
+      "answer": 1,
+      "explain": "Pass the full buffer capacity (32). ImGui leaves room for the terminating zero itself."
+    },
+    {
+      "q": "Where should an editor push ONE undo entry for a slider drag?",
+      "options": ["Whenever <code>SliderFloat</code> returns true", "When <code>IsItemDeactivatedAfterEdit()</code> is true", "When <code>IsItemHovered()</code> is true", "Every frame"],
+      "answer": 1,
+      "explain": "The return value is true on every frame of a drag. <code>IsItemDeactivatedAfterEdit</code> fires once, on release, and only if something changed."
+    },
+    {
+      "q": "In <code>DragFloat(\"X\", &amp;x, 0.1f)</code> what does 0.1f mean?",
+      "options": ["Minimum value", "Value change per pixel of mouse movement", "Display precision", "Seconds between updates"],
+      "answer": 1,
+      "explain": "<code>v_speed</code> is units per pixel dragged. With min == max == 0 the drag has no limits."
+    }
+  ]
+}

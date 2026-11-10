@@ -1,0 +1,141 @@
+<h2>Making it look like YOUR editor</h2>
+<p>The default ImGui look is recognisable at a glance, and that's fine for debug tools. For an editor people spend hours in, a consistent theme, a readable font and sensible spacing make a big difference. All of it comes from two places: the <code>ImGuiStyle</code> struct and the font atlas.</p>
+
+<h2>Built-in themes</h2>
+<pre><code class="cpp">ImGui::StyleColorsDark();      // the default (OGL.c calls this at startup)
+ImGui::StyleColorsLight();
+ImGui::StyleColorsClassic();   // the original purple-ish look</code></pre>
+<p>These functions only set <b>colours</b>. Each takes an optional <code>ImGuiStyle*</code>, so you can fill a style you are building instead of the live one. <code>ImGui::ShowStyleSelector("Theme")</code> is a ready-made combo that calls them.</p>
+
+<h2>ImGuiStyle: sizes and colours</h2>
+<p><code>ImGui::GetStyle()</code> returns a reference to the live style. Change a field and the very next widget uses it:</p>
+<table>
+  <tr><th>Field</th><th>Type</th><th>Controls</th></tr>
+  <tr><td><code>WindowRounding</code></td><td>float</td><td>window corner radius</td></tr>
+  <tr><td><code>FrameRounding</code></td><td>float</td><td>corners of buttons, sliders, input fields</td></tr>
+  <tr><td><code>GrabRounding</code></td><td>float</td><td>slider/scrollbar grab corners</td></tr>
+  <tr><td><code>FramePadding</code></td><td>ImVec2</td><td>space inside a widget frame (makes widgets taller and wider)</td></tr>
+  <tr><td><code>ItemSpacing</code></td><td>ImVec2</td><td>gap between widgets (horizontal for SameLine, vertical between rows)</td></tr>
+  <tr><td><code>WindowPadding</code></td><td>ImVec2</td><td>space between window border and content</td></tr>
+  <tr><td><code>WindowBorderSize</code></td><td>float</td><td>0 or 1: border around windows</td></tr>
+  <tr><td><code>Alpha</code></td><td>float</td><td>global opacity of everything. Never set it to 0, or you can't see the slider to change it back</td></tr>
+  <tr><td><code>Colors[ImGuiCol_*]</code></td><td>ImVec4[]</td><td>every colour, indexed by <code>ImGuiCol_WindowBg</code>, <code>ImGuiCol_Button</code>, <code>ImGuiCol_Header</code>...</td></tr>
+</table>
+<pre><code class="cpp">ImGuiStyle &amp;style = ImGui::GetStyle();
+style.FrameRounding = 4.0f;
+style.Colors[ImGuiCol_Button] = ImVec4(0.20f, 0.20f, 0.22f, 1.0f);</code></pre>
+<div class="tip"><b>Finding the right ImGuiCol</b>
+<p>Open <code>ImGui::ShowStyleEditor()</code> (tick the box in the lesson's Theme window), go to the Colors tab and hover an entry. Most names are obvious. <code>Header*</code> is used by Selectable, TreeNode, CollapsingHeader and MenuItem highlights, and <code>FrameBg*</code> is the background of sliders, inputs and checkboxes.</p></div>
+
+<h2>Writing a custom theme function</h2>
+<p>A theme is just a function that fills an <code>ImGuiStyle</code>. Start from a built-in palette so every colour has a sensible value, then override what matters. Usually that means a few greys plus <b>one accent colour</b> used for active, checked and selected states:</p>
+<pre><code class="cpp">static void L17_StyleEngine(ImGuiStyle *s)
+{
+    ImGui::StyleColorsDark(s);                 // complete base palette
+    s-&gt;WindowRounding = 6.0f;  s-&gt;FrameRounding = 4.0f;  s-&gt;GrabRounding = 4.0f;
+    s-&gt;FramePadding   = ImVec2(8, 4);
+    s-&gt;WindowTitleAlign = ImVec2(0.5f, 0.5f);  // centred titles
+
+    ImVec4 *c = s-&gt;Colors;
+    ImVec4 accent = ImVec4(0.95f, 0.55f, 0.20f, 1.0f);
+    c[ImGuiCol_WindowBg]         = ImVec4(0.11f, 0.11f, 0.12f, 0.96f);
+    c[ImGuiCol_FrameBg]          = ImVec4(0.17f, 0.17f, 0.18f, 1.00f);
+    c[ImGuiCol_CheckMark]        = accent;
+    c[ImGuiCol_SliderGrabActive] = accent;
+    c[ImGuiCol_Header]           = ImVec4(accent.x, accent.y, accent.z, 0.25f);
+    ...
+}</code></pre>
+<p>The lesson then rebuilds the whole style whenever the theme or scale changes: <code>ImGuiStyle s;</code> (defaults), fill the colours, <code>s.ScaleAllSizes(scale)</code>, then <code>ImGui::GetStyle() = s;</code>.</p>
+
+<h2>Temporary changes: Push and Pop</h2>
+<p>To change the look of <i>one</i> widget or section, push a value onto ImGui's style stack and pop it afterwards:</p>
+<pre><code class="cpp">ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.70f, 0.18f, 0.18f, 1.0f));
+ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.85f, 0.25f, 0.25f, 1.0f));
+ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.95f, 0.30f, 0.30f, 1.0f));
+if (ImGui::Button("Delete selected")) { ... }
+ImGui::PopStyleColor(3);                          // pop as many as you pushed
+
+ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 12.0f);         // float vars
+ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(16, 8));  // ImVec2 vars
+ImGui::Button("Pill button");
+ImGui::PopStyleVar(2);</code></pre>
+<div class="warn"><b>Always balance Push/Pop, even on early returns</b>
+<p>An unbalanced push "leaks" into every widget after it, and ImGui asserts at the end of the frame ("Missing PopStyleColor()"). Watch out for code like <code>Push...; if (!open) return; Pop...;</code>. A small RAII helper struct, or keeping Push/Pop on adjacent lines around a single widget, prevents this.</p></div>
+
+<h2>Fonts</h2>
+<p>ImGui rasterises TrueType fonts into a single texture atlas. Add fonts <b>before the first frame</b>. In this engine that means <code>Lesson_Init()</code>, which runs before the backend builds the font texture in its first <code>NewFrame()</code>.</p>
+<pre><code class="cpp">static ImFont *L17_LoadFont(const char *path, float sizePixels)
+{
+    ImGuiIO &amp;io = ImGui::GetIO();
+    FILE *f = fopen(path, "rb");                       // AddFontFromFileTTF asserts on a missing file
+    if (f) { fclose(f); return io.Fonts-&gt;AddFontFromFileTTF(path, sizePixels); }
+    return io.Fonts-&gt;AddFontDefault();                 // fallback: built-in ProggyClean 13 px
+}
+
+void Lesson_Init(void)
+{
+    L17_fontBody    = L17_LoadFont("C:\\Windows\\Fonts\\segoeui.ttf",  18.0f);  // FIRST = default font
+    L17_fontHeading = L17_LoadFont("C:\\Windows\\Fonts\\segoeuib.ttf", 26.0f);
+    L17_fontMono    = L17_LoadFont("C:\\Windows\\Fonts\\consola.ttf",  16.0f);
+}</code></pre>
+<ul>
+  <li><b>The first font added is the default.</b> You can also set <code>io.FontDefault = font</code>, which is what <code>ShowFontSelector()</code> does.</li>
+  <li><b>Each size is a separate font.</b> A 26 px heading is a second <code>AddFontFromFileTTF</code> call, not a scaled 18 px font.</li>
+  <li><b>Switching fonts</b> works like styles: <code>ImGui::PushFont(L17_fontHeading); ImGui::Text("Inspector"); ImGui::PopFont();</code>. <code>PushFont(NULL)</code> pushes the default font.</li>
+  <li><b>Don't add fonts mid-frame.</b> The atlas is locked between <code>NewFrame()</code> and <code>Render()</code>. Load every size you need up front.</li>
+</ul>
+<div class="note"><b>Backslashes in paths</b>
+<p>In a C string, <code>"C:\Windows"</code> contains the escape <code>\W</code>. Write <code>"C:\\Windows\\Fonts\\segoeui.ttf"</code> or use forward slashes: <code>"C:/Windows/Fonts/segoeui.ttf"</code>.</p></div>
+
+<h2>Scaling for high-DPI screens</h2>
+<table>
+  <tr><th>Technique</th><th>Effect</th><th>Quality</th></tr>
+  <tr><td><code>style.ScaleAllSizes(s)</code></td><td>multiplies paddings, spacings, roundings, scrollbar sizes</td><td>perfect, but call it on a <b>fresh</b> style. It multiplies, so calling it twice gives s squared</td></tr>
+  <tr><td><code>io.FontGlobalScale = s</code></td><td>stretches the already-baked glyphs</td><td>quick, blurry above 1.0</td></tr>
+  <tr><td>Load fonts at <code>size * s</code></td><td>sharp glyphs at the right size</td><td>best. Combine with ScaleAllSizes</td></tr>
+</table>
+<p>On Windows, <code>ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd)</code> gives you the monitor's scale factor (1.0 at 96 DPI, 1.5 at 144 DPI) to feed into both.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Ship your editor with its <b>own font files</b> (in an <code>editor/fonts</code> folder) instead of relying on <code>C:\Windows\Fonts</code>, which won't exist on Linux or a build machine. Keep a body font, a bold heading font, a monospace font for consoles and numbers, and often an icon font such as Font Awesome merged into the body font (<code>ImFontConfig::MergeMode</code>) for toolbar icons. Store theme choice and UI scale in the editor's user preferences. Use colour <b>semantically</b>: one accent for "active/selected", red only for destructive actions and errors, yellow for warnings. Avoid tinting panels by type. Users learn what colours mean, so keep them consistent.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <b>"Play mode" tint</b>: while <code>gPaused</code> is false, push a reddish <code>ImGuiCol_WindowBg</code> around the Widget Preview window (push before <code>Begin</code>, pop after <code>End</code>), just like big engines tint the editor during play.</li>
+    <li>Write <code>L17_StyleSoftLight(ImGuiStyle *s)</code>: start from <code>StyleColorsLight</code>, round everything to 8 px, use a blue accent, and add it as a fifth theme.</li>
+    <li>Make a <code>L17_HeadingColored(text, ImVec4 col)</code> that pushes the heading font <b>and</b> a text colour, and pops both.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) play-mode tint
+bool playing = !gPaused;
+if (playing) ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.25f, 0.10f, 0.10f, 0.96f));
+ImGui::Begin("Widget Preview");
+...
+ImGui::End();
+if (playing) ImGui::PopStyleColor();
+
+// 2) soft light theme
+static void L17_StyleSoftLight(ImGuiStyle *s)
+{
+    ImGui::StyleColorsLight(s);
+    s-&gt;WindowRounding = s-&gt;FrameRounding = s-&gt;GrabRounding = s-&gt;PopupRounding = 8.0f;
+    ImVec4 blue = ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
+    s-&gt;Colors[ImGuiCol_CheckMark]        = blue;
+    s-&gt;Colors[ImGuiCol_SliderGrabActive] = blue;
+    s-&gt;Colors[ImGuiCol_ButtonActive]     = blue;
+    s-&gt;Colors[ImGuiCol_HeaderActive]     = blue;
+}
+// add L17_THEME_SOFT to the enum + name array, and a case in L17_ApplyTheme
+
+// 3) coloured heading
+static void L17_HeadingColored(const char *text, ImVec4 col)
+{
+    ImGui::PushFont(L17_fontHeading);
+    ImGui::PushStyleColor(ImGuiCol_Text, col);
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+    ImGui::PopFont();
+}</code></pre>
+  </details>
+</div>

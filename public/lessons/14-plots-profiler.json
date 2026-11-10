@@ -1,0 +1,27 @@
+{
+  "id": "14-plots-profiler",
+  "title": "Plots & a Performance Profiler",
+  "summary": "Graph frame times from a ring buffer, show min/avg/max and a budget bar, pin a transparent HUD to a screen corner and time code sections with QueryPerformanceCounter.",
+  "minutes": 20,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "You plot the ring buffer <code>gFrameTimes</code>. What should you pass as <code>values_offset</code> so the newest sample is on the right?",
+      "options": ["0", "<code>gFrameTimeOffset</code> (the oldest sample / next write position)", "<code>gFrameTimeOffset - 1</code>", "<code>FRAME_HISTORY</code>"],
+      "answer": 1,
+      "explain": "The plot starts drawing at <code>values_offset</code> and wraps around. The next write slot holds the oldest value, so the newest one ends up at the right edge."
+    },
+    {
+      "q": "With VSync on, your frame time sits at 16.7 ms even with an empty scene. Why?",
+      "options": ["ImGui is slow", "SwapBuffers waits for the monitor refresh, so you measure the refresh interval", "QueryPerformanceCounter has 16 ms resolution", "The ring buffer is too short"],
+      "answer": 1,
+      "explain": "Turn VSync off (<code>gVSync = false</code>) to see the real cost of a frame."
+    },
+    {
+      "q": "In <code>SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(1, 1))</code>, what does the last argument do?",
+      "options": ["Sets the window size to 1x1", "It is the pivot: the window's bottom-right corner is placed at pos", "Scales the window", "Makes the window fully opaque"],
+      "answer": 1,
+      "explain": "The pivot lets you anchor a window by any of its corners without knowing its size, which is ideal for corner HUDs."
+    }
+  ]
+}

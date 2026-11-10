@@ -1,0 +1,27 @@
+{
+  "id": "10-menus-popups",
+  "title": "Menus, Shortcuts, Popups and Modals",
+  "summary": "A full File/Edit/View/Create/Help menu bar, real Ctrl+D and Delete shortcuts, confirm-delete and unsaved-changes modals, rich tooltips and the OpenPopup ID-stack gotcha.",
+  "minutes": 30,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "<code>ImGui::MenuItem(\"Duplicate\", \"Ctrl+D\")</code> is in your Edit menu. What happens when the user presses Ctrl+D with the menu closed?",
+      "options": ["The item is activated", "Nothing - the shortcut string is only display text; you must test the chord yourself, e.g. with <code>Shortcut()</code>", "ImGui logs a warning", "The Edit menu opens"],
+      "answer": 1,
+      "explain": "Menu code doesn't even run while the menu is closed. Real shortcuts are checked every frame with <code>ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_D, ...)</code> or <code>IsKeyChordPressed()</code>."
+    },
+    {
+      "q": "You call <code>OpenPopup(\"About\")</code> from a MenuItem inside <code>BeginMenu(\"Help\")</code>, and <code>BeginPopupModal(\"About\")</code> at the top level. The modal never appears. Why?",
+      "options": ["Modals cannot be opened from menus", "The popup ID is hashed with the current ID stack, and the two calls have different stacks", "You must call OpenPopup every frame", "BeginPopupModal needs a bool*"],
+      "answer": 1,
+      "explain": "Set a request flag in the menu, then call <code>OpenPopup()</code> right next to <code>BeginPopupModal()</code> so both see the same ID stack."
+    },
+    {
+      "q": "Why pass <code>ImGuiInputFlags_RouteGlobal</code> to <code>Shortcut()</code> for editor-wide commands?",
+      "options": ["It makes shortcuts repeat", "The default route only fires while the calling window is focused; after clicking the 3D view no ImGui window is focused", "It is required for Ctrl combinations", "It disables the shortcut while typing"],
+      "answer": 1,
+      "explain": "<code>RouteFocused</code> is the default. Global routes still lose to a focused window or active widget that registered the same chord, which is usually what you want."
+    }
+  ]
+}

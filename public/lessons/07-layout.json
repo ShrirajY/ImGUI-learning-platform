@@ -1,0 +1,33 @@
+{
+  "id": "07-layout",
+  "title": "Layout: Lines, Groups, Children and Tabs",
+  "summary": "SameLine, Indent, groups, item widths, child regions, collapsing headers, tab bars and a clean two-column property grid for an engine Inspector.",
+  "minutes": 25,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "What does <code>ImGui::SameLine(120.0f)</code> do?",
+      "options": ["Adds 120 pixels of space after the previous widget", "Places the next widget on the same line, starting at x = 120 from the window's left edge", "Makes the next widget 120 pixels wide", "Indents the rest of the window by 120 pixels"],
+      "answer": 1,
+      "explain": "The first argument is an absolute X offset (in window coordinates). The second argument, <code>spacing</code>, is the gap after the previous item. <code>SameLine(0, 20)</code> means 'right after the last item, 20 px gap'."
+    },
+    {
+      "q": "You want a slider to fill all the remaining width of the current column or window. Which call do you make before it?",
+      "options": ["<code>SetNextItemWidth(0)</code>", "<code>SetNextItemWidth(-FLT_MIN)</code>", "<code>PushItemWidth(100)</code>", "<code>Dummy(ImVec2(-1, 0))</code>"],
+      "answer": 1,
+      "explain": "Negative widths mean 'align this many pixels from the right edge'. <code>-FLT_MIN</code> is the smallest negative number, so the widget stretches to the right edge with no label space left over."
+    },
+    {
+      "q": "Which call must be matched with <code>EndChild()</code> even if it returned false?",
+      "options": ["<code>BeginTabItem()</code>", "<code>BeginChild()</code>", "<code>CollapsingHeader()</code>", "<code>BeginTabBar()</code>"],
+      "answer": 1,
+      "explain": "<code>BeginChild</code>/<code>EndChild</code> behave like <code>Begin</code>/<code>End</code>: always paired. <code>BeginTabBar</code> and <code>BeginTabItem</code> only need their End call when they returned true, and <code>CollapsingHeader</code> needs no end call at all."
+    },
+    {
+      "q": "Why call <code>AlignTextToFramePadding()</code> before a <code>Text()</code> that sits next to a slider?",
+      "options": ["To make the text bold", "So the text baseline lines up with the framed widget's text instead of sitting higher", "To add a tooltip", "It is required before every Text()"],
+      "answer": 1,
+      "explain": "Framed widgets (sliders, inputs, buttons) have vertical padding. Plain text doesn't. AlignTextToFramePadding pushes the text down by <code>FramePadding.y</code> so both line up."
+    }
+  ]
+}

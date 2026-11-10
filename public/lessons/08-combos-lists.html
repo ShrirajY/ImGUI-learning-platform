@@ -1,0 +1,149 @@
+<h2>Picking one thing from many</h2>
+<p>An editor is full of "choose one" fields: mesh type, texture, material, shading mode, the entity you are editing. ImGui gives you two families of widgets for this:</p>
+<ul>
+  <li><b>Combos</b> (drop-down boxes): compact, one line high, the list opens in a popup.</li>
+  <li><b>List boxes</b>: an always-visible, scrollable list. Good for scene entities and asset browsers.</li>
+</ul>
+<p>Both are built from the same building block: <code>Selectable()</code>.</p>
+
+<h2>Combo with an array</h2>
+<p>The quickest form takes an <code>int*</code> index and an array of strings. The engine already has <code>gMeshNames[MESH_COUNT]</code>, and <code>Entity::mesh</code> is an index into it, so it is a one-liner:</p>
+<pre><code class="cpp">Entity *e = &amp;gEntities[gSelectedEntity];
+ImGui::Combo("Mesh", &amp;e-&gt;mesh, gMeshNames, MESH_COUNT);   // returns true when changed</code></pre>
+<p>For short fixed lists there is also a zero-separated string version (the list must end with two zero bytes: your final <code>\0</code> plus the one the compiler adds to every string literal):</p>
+<pre><code class="cpp">static int preset = 2;
+if (ImGui::Combo("Time scale", &amp;preset, "Paused\0Half\0Normal\0Double\0Quad\0"))
+    gTimeScale = speeds[preset];</code></pre>
+
+<h3>Combos for enums</h3>
+<p>Keep a names array next to your enum, sized by a <code>_COUNT</code> entry. Then the combo index <i>is</i> the enum value:</p>
+<pre><code class="cpp">enum ShadingMode { SHADE_LIT, SHADE_UNLIT, SHADE_WIREFRAME, SHADE_COUNT };
+static const char *shadingNames[SHADE_COUNT] = { "Lit", "Unlit", "Wireframe" };
+static int shading = SHADE_LIT;   // int, because Combo wants int*
+
+if (ImGui::Combo("Shading", &amp;shading, shadingNames, SHADE_COUNT))
+    ApplyShading(shading);         // react only on change</code></pre>
+<div class="tip"><b>Enum storage</b>
+<p><code>Combo</code> needs an <code>int*</code>. If your struct stores a C++ <code>enum class</code> or a <code>uint8_t</code>, copy it into a temporary <code>int</code>, call <code>Combo</code>, and write it back when it returns true.</p></div>
+
+<h2>Custom combos: BeginCombo / Selectable / EndCombo</h2>
+<p>When the list isn't a plain string array, or you want thumbnails, a "None" entry, separators or filtering inside the popup, build the combo yourself. <code>BeginCombo</code> draws the closed box with whatever preview text you pass, and returns true while the popup is open:</p>
+<pre><code class="cpp">const char *preview = (e-&gt;texture &gt;= 0) ? gTextures[e-&gt;texture].name : "None";
+if (ImGui::BeginCombo("Texture", preview))
+{
+    if (ImGui::Selectable("None", e-&gt;texture &lt; 0))
+        e-&gt;texture = -1;
+
+    for (int t = 0; t &lt; gTextureCount; t++)
+    {
+        bool isSelected = (e-&gt;texture == t);
+        ImGui::PushID(t);
+        ImGui::Image(Engine_TexID(t), ImVec2(16, 16)); ImGui::SameLine();
+        if (ImGui::Selectable(gTextures[t].name, isSelected))
+            e-&gt;texture = t;
+        if (isSelected)
+            ImGui::SetItemDefaultFocus();   // opens scrolled to + keyboard-focused on current item
+        ImGui::PopID();
+    }
+    ImGui::EndCombo();                      // only if BeginCombo returned true
+}</code></pre>
+<p><code>Selectable(label, selected)</code> draws a highlighted row when <code>selected</code> is true and returns true when clicked. It is <b>read-only</b> about selection: you decide what "selected" means and you update your own state. Inside a combo, clicking a Selectable also closes the popup automatically.</p>
+
+<h2>List boxes</h2>
+<pre><code class="cpp">// Quick version: array of strings, like Combo
+static int item = 0;
+ImGui::ListBox("Meshes", &amp;item, gMeshNames, MESH_COUNT, 4);   // 4 rows tall
+
+// Full version: any content you like
+if (ImGui::BeginListBox("##entities", ImVec2(-FLT_MIN, 200)))
+{
+    for (int i = 0; i &lt; gEntityCount; i++)
+    {
+        ImGui::PushID(i);
+        if (ImGui::Selectable(gEntities[i].name, gSelectedEntity == i))
+            gSelectedEntity = i;
+        ImGui::PopID();
+    }
+    ImGui::EndListBox();
+}</code></pre>
+<p><code>BeginListBox</code> is a framed child window, so the same sizing rules apply: <code>-FLT_MIN</code> width fills the row, and a negative height leaves space below (for example <code>-ImGui::GetFrameHeightWithSpacing()</code> to keep one row of buttons visible).</p>
+<div class="warn"><b>Duplicate names = shared ID</b>
+<p>Duplicate an entity and you get two rows called "Cube". With the same label they have the same ID, so clicking one can highlight both or not respond at all. Always <code>PushID(i)</code> / <code>PopID()</code> around rows in a loop, or append <code>"##"</code> plus the index to the label.</p></div>
+
+<h3>Double-click</h3>
+<p>Pass <code>ImGuiSelectableFlags_AllowDoubleClick</code>, then check <code>ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)</code> when the Selectable returns true. In the lesson code, a double-click focuses the camera on the entity.</p>
+
+<h2>Search boxes: ImGuiTextFilter</h2>
+<p><code>ImGuiTextFilter</code> is a small helper that owns an input buffer and parses it into include/exclude terms. Keep it <code>static</code> (it must survive between frames):</p>
+<pre><code class="cpp">static ImGuiTextFilter filter;
+filter.Draw("Filter", 200.0f);               // draws an InputText; returns true when edited
+
+for (int i = 0; i &lt; gEntityCount; i++)
+    if (filter.PassFilter(gEntities[i].name))
+        ImGui::Selectable(gEntities[i].name);</code></pre>
+<table>
+  <tr><th>Filter text</th><th>Matches</th></tr>
+  <tr><td><code>cr</code></td><td>Names containing "cr" (case-insensitive): Crate</td></tr>
+  <tr><td><code>cr,pl</code></td><td>Containing "cr" OR "pl": Crate, Planet</td></tr>
+  <tr><td><code>-ground</code></td><td>Everything except names containing "ground"</td></tr>
+</table>
+
+<h2>Huge lists: ImGuiListClipper</h2>
+<p>A real project has thousands of assets. Submitting 10,000 Selectables every frame works, but it wastes CPU on rows nobody can see. <code>ImGuiListClipper</code> tells you which rows are visible in the current scroll position, so you only submit those:</p>
+<pre><code class="cpp">ImGuiListClipper clipper;
+clipper.Begin(itemCount);                    // optional 2nd arg: row height if known
+while (clipper.Step())
+    for (int row = clipper.DisplayStart; row &lt; clipper.DisplayEnd; row++)
+        ImGui::Selectable(names[row], row == selected);</code></pre>
+<p>The clipper needs <b>every row to have the same height</b>, and needs a <b>random-access index</b>. That is why you can't call <code>PassFilter</code> inside the clipper loop. When the filter changes, rebuild an array of matching indices, then clip <i>that</i> array:</p>
+<pre><code class="cpp">if (filter.Draw("Search"))                   // only when the text changed
+{
+    filteredCount = 0;
+    for (int i = 0; i &lt; ASSET_COUNT; i++)
+        if (filter.PassFilter(assetNames[i])) filtered[filteredCount++] = i;
+}
+clipper.Begin(filteredCount);                // ...then draw assetNames[filtered[row]]</code></pre>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Notice how little "editor state" we need. The texture combo writes directly into <code>Entity::texture</code>, and the entity list reads and writes <code>gSelectedEntity</code>. When you click an object in the 3D view, the engine changes <code>gSelectedEntity</code> and the list highlight follows on the next frame without any sync code. The only state we own is the filter text and the cached index list for the asset browser, which is pure UI state.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Put an <code>ImGuiTextFilter</code> <b>inside</b> the Texture combo popup, above the items, so you can type to narrow the textures down.</li>
+    <li>In the Asset Browser, colour the type column: textures in green, meshes in blue (use <code>TextColored</code> instead of <code>TextDisabled</code>).</li>
+    <li>Replace the "Mesh" combo with a row of <code>RadioButton</code>s for all <code>MESH_COUNT</code> meshes. When is a combo better than radio buttons?</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. filter inside the popup (static so it keeps text while the popup is open)
+if (ImGui::BeginCombo("Texture", preview))
+{
+    static ImGuiTextFilter texFilter;
+    if (ImGui::IsWindowAppearing()) { ImGui::SetKeyboardFocusHere(); texFilter.Clear(); }
+    texFilter.Draw("##texfilter", -FLT_MIN);
+    if (ImGui::Selectable("None", e-&gt;texture &lt; 0)) e-&gt;texture = -1;
+    for (int t = 0; t &lt; gTextureCount; t++)
+        if (texFilter.PassFilter(gTextures[t].name))
+        {
+            ImGui::PushID(t);
+            if (ImGui::Selectable(gTextures[t].name, e-&gt;texture == t)) e-&gt;texture = t;
+            ImGui::PopID();
+        }
+    ImGui::EndCombo();
+}
+
+// 2.
+ImVec4 col = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+if (L08_assetType[a] == 0) col = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);   // Mesh
+if (L08_assetType[a] == 1) col = ImVec4(0.4f, 1.0f, 0.5f, 1.0f);   // Texture
+ImGui::TextColored(col, "%s", L08_AssetTypes[L08_assetType[a]]);
+
+// 3. radio buttons are fine for 2-5 options that should always be visible;
+//    combos win when the list is long, dynamic, or space is tight.
+for (int m = 0; m &lt; MESH_COUNT; m++)
+{
+    if (m &gt; 0) ImGui::SameLine();
+    ImGui::RadioButton(gMeshNames[m], &amp;e-&gt;mesh, m);
+}</code></pre>
+  </details>
+</div>

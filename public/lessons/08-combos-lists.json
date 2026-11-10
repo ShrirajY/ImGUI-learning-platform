@@ -1,0 +1,27 @@
+{
+  "id": "08-combos-lists",
+  "title": "Combos, Lists and Search",
+  "summary": "Mesh and texture pickers with Combo and BeginCombo, enum combos, list boxes synced with the selection, ImGuiTextFilter search and ImGuiListClipper for 10,000 assets.",
+  "minutes": 25,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "What does <code>Selectable(\"Crate\", isSelected)</code> do with <code>isSelected</code>?",
+      "options": ["Writes true into it when clicked", "Only uses it to decide whether to draw the row highlighted; you update your own selection when it returns true", "Toggles it every frame", "Nothing, it is ignored inside list boxes"],
+      "answer": 1,
+      "explain": "The <code>bool</code> overload is read-only. Your code owns the selection, e.g. <code>if (Selectable(name, gSelectedEntity == i)) gSelectedEntity = i;</code>"
+    },
+    {
+      "q": "Why call <code>SetItemDefaultFocus()</code> on the currently selected item inside <code>BeginCombo</code>?",
+      "options": ["It selects the item", "So the popup opens scrolled to that item and keyboard navigation starts there", "It is required or EndCombo asserts", "It closes the popup"],
+      "answer": 1,
+      "explain": "It marks the default nav focus for the window that just appeared, which also scrolls it into view."
+    },
+    {
+      "q": "You use <code>ImGuiListClipper</code> on 10,000 assets with a search filter. Where should the filtering happen?",
+      "options": ["Inside the clipper loop, with <code>continue</code> on non-matching rows", "Build an array of matching indices when the filter changes, and clip over that array", "Filtering is impossible with a clipper", "Call <code>clipper.Begin()</code> once per matching item"],
+      "answer": 1,
+      "explain": "The clipper maps visible rows to indices <code>0..count-1</code> and assumes every row is submitted with the same height. Skipping rows inside the loop breaks the scroll math."
+    }
+  ]
+}

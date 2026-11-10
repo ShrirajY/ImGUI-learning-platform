@@ -1,0 +1,147 @@
+<h2>You've built an editor. What now?</h2>
+<p>The capstone runs on the <b>master</b> branch of Dear ImGui with the <b>fixed-function OpenGL2</b> backend, in a single Win32 window. That's a good place to learn. A production engine editor usually adds docking, a modern renderer backend, a "Game View" render target and a few battle-tested extensions. This page is a map of those next steps.</p>
+
+<h2>Docking: the docking branch</h2>
+<p>Dockable tabs and splitters (dragging the Inspector onto the right edge and having it snap there) are <b>not in this version</b>. They live on the official <code>docking</code> branch, which is kept in sync with master and is used by most engine editors.</p>
+<h3>Switching</h3>
+<ol>
+  <li>Download the docking branch (<code>git clone -b docking https://github.com/ocornut/imgui</code>, or "Download ZIP" on GitHub with the <i>docking</i> branch selected).</li>
+  <li>Replace <b>all</b> core files together: <code>imgui.cpp/.h</code>, <code>imgui_internal.h</code>, <code>imgui_draw.cpp</code>, <code>imgui_widgets.cpp</code>, <code>imgui_tables.cpp</code>, <code>imgui_demo.cpp</code>, <code>imconfig.h</code>, <code>imstb_*.h</code>, <b>and</b> the backends you use (<code>imgui_impl_win32.*</code>, <code>imgui_impl_opengl2.*</code>). Mixing versions causes compile errors or crashes.</li>
+  <li>Enable it and add a dockspace:</li>
+</ol>
+<pre><code class="cpp">// after CreateContext()
+ImGuiIO &amp;io = ImGui::GetIO();
+io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+// every frame, before your panels (docking branch only!)
+ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+// PassthruCentralNode: the empty central area is transparent, so your 3D scene shows through</code></pre>
+<p>Your existing <code>Begin()/End()</code> panels become dockable with no other changes. Drag a window by its title bar onto another window or the dockspace to dock it. Set <code>io.ConfigDockingWithShift = true</code> if you'd rather require <kbd>Shift</kbd> for docking. For a predefined layout, look at the <code>DockBuilder*</code> functions in <code>imgui_internal.h</code> (<code>DockBuilderSplitNode</code>, <code>DockBuilderDockWindow</code>).</p>
+
+<h3>Multi-viewports</h3>
+<p>Also on the docking branch: <code>io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable</code> lets windows be dragged <b>outside</b> the main OS window, becoming real OS windows (great on multi-monitor setups). It needs extra backend support: call <code>ImGui::UpdatePlatformWindows()</code> and <code>ImGui::RenderPlatformWindowsDefault()</code> after rendering, and the Win32+OpenGL setup needs per-window HDC handling. See the <code>example_win32_opengl3</code> sample on that branch for the exact code.</p>
+
+<h2>Modern OpenGL: the OpenGL3 backend</h2>
+<p>If your engine moves from fixed-function GL to shaders and VBOs, switch the renderer backend from <code>imgui_impl_opengl2</code> to <code>imgui_impl_opengl3</code>:</p>
+<pre><code class="cpp">#include "imgui_impl_opengl3.h"
+
+ImGui_ImplWin32_InitForOpenGL(hwnd);
+ImGui_ImplOpenGL3_Init("#version 130");      // GLSL version string matching your context
+
+// per frame
+ImGui_ImplOpenGL3_NewFrame();
+ImGui_ImplWin32_NewFrame();
+ImGui::NewFrame();
+...
+ImGui::Render();
+ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());</code></pre>
+<ul>
+  <li>It renders with a shader + VBO, so it works in a <b>core profile</b> context (created with <code>wglCreateContextAttribsARB</code>).</li>
+  <li>It ships with its own minimal loader (<code>imgui_impl_opengl3_loader.h</code>), so it works even before you add GLAD/GLEW. If your engine already uses a loader, that's fine too.</li>
+  <li>It saves and restores the GL state it touches, so it slots in after your scene rendering like the GL2 backend does.</li>
+  <li><code>ImTextureID</code> is still a cast <code>GLuint</code>, so everything from lesson 16 carries over unchanged.</li>
+</ul>
+
+<h2>The "Game View": scene in an ImGui window</h2>
+<p>Right now the 3D scene fills the whole OS window and panels float on top. Most editors instead render the scene into an <b>offscreen framebuffer (FBO)</b> and display its colour texture with <code>ImGui::Image</code>, so the viewport becomes a dockable panel like any other:</p>
+<pre><code class="cpp">// once (GL 3.0+ or ARB_framebuffer_object): FBO with a colour texture + depth renderbuffer
+glGenFramebuffers(1, &amp;fbo);    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+glGenTextures(1, &amp;colorTex);   /* glTexImage2D(..., w, h, ...) */
+glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTex, 0);
+glGenRenderbuffers(1, &amp;depthRb); /* glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, w, h) */
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRb);
+
+// every frame, inside your "Scene" window
+ImVec2 size = ImGui::GetContentRegionAvail();
+if (size.x != fboW || size.y != fboH) ResizeFbo((int)size.x, (int)size.y);   // match the panel
+// ... render the scene into the FBO (bind fbo, glViewport(0,0,w,h), draw, bind 0) ...
+ImGui::Image((ImTextureID)(intptr_t)colorTex, size, ImVec2(0, 1), ImVec2(1, 0)); // flipped V!
+bool viewportHovered = ImGui::IsItemHovered();   // replaces io.WantCaptureMouse for camera input</code></pre>
+<div class="warn"><b>Two gotchas</b>
+<ul>
+  <li><b>Flip V</b>: OpenGL render targets have their origin at the bottom-left, so pass <code>uv0=(0,1), uv1=(1,0)</code>.</li>
+  <li><b>Input and picking change</b>: camera controls should check <code>IsItemHovered()</code> on the image instead of <code>WantCaptureMouse</code> (the mouse is over an ImGui window now). Picking must convert the mouse position to image-local coordinates with <code>GetItemRectMin()</code>.</li>
+</ul></div>
+<p>With fixed-function GL on Windows, <code>glGenFramebuffers</code> isn't in the GL 1.1 headers, so load it with <code>wglGetProcAddress</code> (OGL.c does the same for <code>wglSwapIntervalEXT</code>), or use a loader such as GLAD.</p>
+
+<h2>Extensions worth knowing</h2>
+<table>
+  <tr><th>Library</th><th>What it gives your editor</th></tr>
+  <tr><td><b>ImGuizmo</b> (CedricGuillemet/ImGuizmo)</td><td>The 3D translate/rotate/scale gizmo you know from Unity and Unreal, drawn with ImDrawList over your viewport. <code>ImGuizmo::Manipulate(view, proj, op, mode, matrix)</code>. Also includes a view cube and sequencer.</td></tr>
+  <tr><td><b>ImPlot</b> (epezent/implot)</td><td>Real plotting: zoomable line/bar/scatter/heatmap plots, multiple axes, legends. A big upgrade over <code>PlotLines</code> for profilers and gameplay telemetry.</td></tr>
+  <tr><td><b>imnodes</b> (Nelarius/imnodes) / <b>imgui-node-editor</b> (thedmd)</td><td>Node graphs for material editors, visual scripting, animation state machines, dialogue trees.</td></tr>
+  <tr><td><b>ImGuiColorTextEdit</b> (BalazsJako)</td><td>A syntax-highlighting code editor widget for in-engine shader or script editing.</td></tr>
+  <tr><td><b>ImGuiFileDialog</b> / <b>imgui-filebrowser</b></td><td>File open/save dialogs drawn with ImGui (or call the native <code>GetOpenFileNameA</code> on Windows).</td></tr>
+  <tr><td><b>Font Awesome / Material icons</b> + <code>IconFontCppHeaders</code></td><td>Icon glyphs merged into your font (<code>ImFontConfig::MergeMode</code>) for toolbars and tree icons.</td></tr>
+</table>
+<p>The full, maintained list is on the wiki: <a href="https://github.com/ocornut/imgui/wiki/Useful-Extensions" target="_blank">Useful Extensions</a>.</p>
+
+<h2>Saving the layout: imgui.ini</h2>
+<p>OGL.c sets <code>io.IniFilename = NULL</code> so every lesson starts fresh. In your editor, you want the opposite: window positions, sizes, collapsed state, table column widths (and dock layout on the docking branch) restored on every launch.</p>
+<pre><code class="cpp">io.IniFilename = "editor_layout.ini";     // default is "imgui.ini" in the working directory
+
+// or manage it yourself, e.g. to store it in your project file or user profile:
+io.IniFilename = NULL;
+ImGui::LoadIniSettingsFromMemory(savedText, savedSize);   // before the first NewFrame
+...
+if (io.WantSaveIniSettings)                               // ImGui says something changed
+{
+    size_t size;
+    const char *ini = ImGui::SaveIniSettingsToMemory(&amp;size);
+    WriteToMyConfig(ini, size);
+    io.WantSaveIniSettings = false;
+}</code></pre>
+<p>This is when <code>ImGuiCond_FirstUseEver</code> really pays off: your default layout is used only the first time, and after that the user's arrangement wins.</p>
+
+<h2>Performance tips</h2>
+<ul>
+  <li><b>Skip hidden work</b>: if <code>Begin()</code> returns false (collapsed or clipped), skip the panel's contents. The capstone panels already do this.</li>
+  <li><b>Long lists</b>: use <code>ImGuiListClipper</code> so only visible rows are submitted. A hierarchy with 50,000 entities then costs the same as one with 50.</li>
+  <li><b>Avoid per-frame allocation</b> in hot UI code: format into stack buffers, as the lessons do with <code>_snprintf</code>.</li>
+  <li><b>Profile it</b>: ImGui itself is usually well under 1 ms. If it isn't, use the Metrics window to see vertex counts per window.</li>
+  <li><b>Idle throttling</b>: an editor doesn't need 500 FPS when nothing moves. Keep VSync on, or sleep when there is no input.</li>
+</ul>
+
+<h2>Built-in debug tools</h2>
+<table>
+  <tr><th>Call</th><th>Use it when</th></tr>
+  <tr><td><code>ImGui::ShowMetricsWindow()</code></td><td>Inspect every window, draw list, draw command and the internal state. Hover a draw command to highlight it on screen.</td></tr>
+  <tr><td><code>ImGui::ShowIDStackToolWindow()</code></td><td>"Why does this button not react / react twice?" Hover a widget to see its full ID path. Essential for ID conflicts.</td></tr>
+  <tr><td><code>ImGui::ShowDebugLogWindow()</code></td><td>Logs focus changes, popups, nav and IO events as they happen.</td></tr>
+  <tr><td><code>ImGui::ShowDemoWindow()</code></td><td>The most complete documentation there is. Find the widget you want, then read its code in <code>imgui_demo.cpp</code>.</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd> in <code>imgui_demo.cpp</code></td><td>Seriously. Almost every question has a working example in there.</td></tr>
+</table>
+<div class="tip"><b>Item Picker</b>
+<p>In Metrics &gt; Tools, the <b>Item Picker</b> lets you click any widget on screen and breaks into the debugger right where that widget is submitted. Very handy in a large editor codebase.</p></div>
+
+<h2>Reading list</h2>
+<ul>
+  <li><a href="https://github.com/ocornut/imgui" target="_blank">github.com/ocornut/imgui</a>: source, releases, and the <b>Issues</b> tab, where years of Q&amp;A live (search before asking).</li>
+  <li><a href="https://github.com/ocornut/imgui/blob/master/docs/FAQ.md" target="_blank">FAQ</a>: IDs, input capture, fonts, textures, DPI. Most of this course in more detail.</li>
+  <li><a href="https://github.com/ocornut/imgui/wiki" target="_blank">Wiki</a>: Getting Started, Docking, Multi-Viewports, Image Loading and Displaying Examples, Useful Extensions.</li>
+  <li><a href="https://github.com/ocornut/imgui/issues?q=label%3Agallery" target="_blank">Gallery threads</a>: screenshots of real engine editors built with ImGui, for inspiration.</li>
+  <li><code>imgui.h</code> itself: every function has a comment. When in doubt, read the header.</li>
+</ul>
+
+<h2>Your engine editor checklist</h2>
+<p>Work through these in your own engine. Each one builds on the techniques from this course:</p>
+<table>
+  <tr><th>Feature</th><th>Builds on</th></tr>
+  <tr><td>[ ] Docking layout with a passthrough central viewport</td><td>docking branch</td></tr>
+  <tr><td>[ ] Scene rendered into an FBO "Game View" panel, resizable, with correct picking</td><td>lessons 16, 19</td></tr>
+  <tr><td>[ ] 3D transform gizmo (translate/rotate/scale, local/world, snapping)</td><td>ImGuizmo, lesson 15</td></tr>
+  <tr><td>[ ] Hierarchy with parenting via drag and drop, multi-select, rename with F2</td><td>lessons 9, 13</td></tr>
+  <tr><td>[ ] Inspector generated from component metadata (reflection) instead of hand-written</td><td>lesson 9</td></tr>
+  <tr><td>[ ] Undo/redo stack built on the command queue (merge consecutive drags with <code>IsItemDeactivatedAfterEdit</code>)</td><td>lessons 13, 18</td></tr>
+  <tr><td>[ ] Scene save/load (JSON or binary) + "unsaved changes" asterisk in the title</td><td>lesson 10</td></tr>
+  <tr><td>[ ] Content browser scanning a real folder, with thumbnails and drag-to-scene</td><td>lessons 13, 16</td></tr>
+  <tr><td>[ ] Console with command history (Up/Down), autocomplete and cvars</td><td>lesson 12</td></tr>
+  <tr><td>[ ] Profiler with nested scopes and a frozen capture view</td><td>lesson 14, ImPlot</td></tr>
+  <tr><td>[ ] Play / Pause / Step-frame with scene serialisation restore</td><td>lesson 18</td></tr>
+  <tr><td>[ ] Editor preferences: theme, UI scale, font size, saved to disk</td><td>lesson 17</td></tr>
+  <tr><td>[ ] Layout persistence with imgui.ini + "Reset Layout"</td><td>lesson 19</td></tr>
+  <tr><td>[ ] Keyboard shortcuts with a remappable keymap</td><td>lessons 13, 18</td></tr>
+</table>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>The most useful habit to take from this course is the immediate-mode mindset: <b>the UI is a function of your data, re-run every frame</b>. There is no widget tree to keep in sync and no "on changed" plumbing, so adding a debug panel takes minutes. Studios rely on that most of all. The polished editor is nice, but the throwaway tool window you can write in five minutes to debug an AI state machine or a physics glitch is where Dear ImGui really earns its place. Keep a <code>Debug</code> menu in your engine and fill it freely.</p></div>

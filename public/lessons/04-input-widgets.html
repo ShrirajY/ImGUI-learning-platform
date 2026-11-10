@@ -1,0 +1,122 @@
+<p class="lead">An inspector is mostly numbers: position, rotation, scale, speed, FOV. ImGui has three families of numeric widgets. All of them edit your variable through a pointer and return <code>true</code> on the frame the value changed.</p>
+
+<h2>Sliders, drags and input boxes</h2>
+<table>
+  <tr><th>Family</th><th>Example</th><th>Best for</th></tr>
+  <tr><td><b>Slider</b></td><td><code>SliderFloat("FOV", &amp;fov, 20, 110)</code></td><td>Values with a natural range: FOV, volume, 0..1 factors</td></tr>
+  <tr><td><b>Drag</b></td><td><code>DragFloat3("Position", pos, 0.05f)</code></td><td>Unbounded values: positions, offsets. Click and drag left/right.</td></tr>
+  <tr><td><b>Input</b></td><td><code>InputFloat("Speed", &amp;s, 0.5f, 5.0f)</code></td><td>Exact typed values, with optional +/- step buttons</td></tr>
+</table>
+<div class="mock">
+  <div class="mock-title">Inspector</div>
+  <div class="mock-body">
+    <div class="mock-row"><span class="mock-frame">-3.00</span><span class="mock-frame">0.50</span><span class="mock-frame">0.00</span> Position</div>
+    <div class="mock-row"><span class="mock-frame">0.0 deg</span><span class="mock-frame">45.0 deg</span><span class="mock-frame">0.0 deg</span> Rotation</div>
+    <div class="mock-row"><span class="mock-frame">45 deg</span> FOV</div>
+  </div>
+</div>
+
+<h3>Signatures you will use every day</h3>
+<pre><code class="cpp">bool SliderFloat(const char* label, float* v, float v_min, float v_max,
+                 const char* format = "%.3f", ImGuiSliderFlags flags = 0);
+bool SliderInt  (const char* label, int* v, int v_min, int v_max,
+                 const char* format = "%d", ImGuiSliderFlags flags = 0);
+
+bool DragFloat  (const char* label, float* v, float v_speed = 1.0f,
+                 float v_min = 0.0f, float v_max = 0.0f,      // min == max -&gt; no limits
+                 const char* format = "%.3f", ImGuiSliderFlags flags = 0);
+bool DragFloat3 (const char* label, float v[3], ...same...);  // also 2 and 4
+bool DragInt    (const char* label, int* v, float v_speed = 1.0f, int v_min = 0, int v_max = 0, ...);
+
+bool InputFloat (const char* label, float* v, float step = 0.0f, float step_fast = 0.0f,
+                 const char* format = "%.3f", ImGuiInputTextFlags flags = 0);
+bool InputInt   (const char* label, int* v, int step = 1, int step_fast = 100, ...);</code></pre>
+<p>The <code>...3</code> variants take a <code>float[3]</code>, so they fit the engine's <code>Entity::position</code>, <code>rotation</code> and <code>scale</code> exactly:</p>
+<pre><code class="cpp">Entity *e = &amp;gEntities[gSelectedEntity];
+ImGui::DragFloat3("Position", e-&gt;position, 0.05f);   // 0.05 units per pixel dragged</code></pre>
+
+<div class="tip"><b>Ctrl+Click to type</b>
+<p>Any slider or drag turns into a text box when you <kbd>Ctrl</kbd>+click it (or double-click a drag). Type <code>2.5</code> and press <kbd>Enter</kbd>. While dragging, hold <kbd>Shift</kbd> to go faster or <kbd>Alt</kbd> to go slower.</p></div>
+
+<h2>Format strings: units and precision</h2>
+<p>The format string controls what is <i>displayed</i>. The value is also rounded to that precision, unless you pass <code>ImGuiSliderFlags_NoRoundToFormat</code>.</p>
+<pre><code class="cpp">ImGui::SliderFloat("FOV",      &amp;gCamera.fov, 20.0f, 110.0f, "%.0f deg");   // 45 deg
+ImGui::DragFloat  ("Time",     &amp;gTimeScale,  0.01f, 0.0f, 5.0f, "%.2fx");   // 1.00x
+ImGui::SliderInt  ("Lives",    &amp;lives, 0, 9, "%d lives");
+ImGui::DragFloat3 ("Rotation", e-&gt;rotation, 0.5f, -360.0f, 360.0f, "%.1f deg");</code></pre>
+
+<h2>Slider flags</h2>
+<table>
+  <tr><th>Flag</th><th>Effect</th></tr>
+  <tr><td><code>ImGuiSliderFlags_AlwaysClamp</code></td><td>Clamp to min/max even when Ctrl+Click typing. Without it, typed values can go out of range. Use it for scale (never 0) and pitch (+-89).</td></tr>
+  <tr><td><code>ImGuiSliderFlags_Logarithmic</code></td><td>Fine steps near the minimum, big steps near the max. Good for camera distance, light range, mass.</td></tr>
+  <tr><td><code>ImGuiSliderFlags_NoInput</code></td><td>Disables Ctrl+Click typing.</td></tr>
+  <tr><td><code>ImGuiSliderFlags_WrapAround</code></td><td>Drag only: going past max wraps to min. Good for angles.</td></tr>
+  <tr><td><code>ImGuiSliderFlags_NoRoundToFormat</code></td><td>Keep full precision even if the format shows fewer digits.</td></tr>
+</table>
+<pre><code class="cpp">ImGui::DragFloat3("Scale", e-&gt;scale, 0.01f, 0.01f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+ImGui::SliderFloat("Distance", &amp;gCamera.distance, 1.0f, 200.0f, "%.1f m", ImGuiSliderFlags_Logarithmic);</code></pre>
+
+<h2>InputText: editing a char buffer</h2>
+<p>ImGui edits text <b>in place</b> in a buffer you own. You must tell it the buffer size so that it never writes past the end:</p>
+<pre><code class="cpp">// Entity::name is char[32]
+ImGui::InputText("Name", e-&gt;name, sizeof(e-&gt;name));         // sizeof includes the terminating 0
+
+static char search[64] = "";
+ImGui::InputTextWithHint("##search", "Filter entities...", search, sizeof(search));
+
+if (ImGui::InputText("Command", cmd, sizeof(cmd), ImGuiInputTextFlags_EnterReturnsTrue))
+    RunCommand(cmd);                                          // only when Enter is pressed</code></pre>
+<div class="warn"><b>Use sizeof on arrays, not pointers</b>
+<p><code>sizeof(e-&gt;name)</code> is 32 because <code>name</code> is an array. If you pass a <code>char*</code> pointer, <code>sizeof</code> gives 8 (the pointer size) and you can only type 7 characters. For <code>std::string</code> use <code>misc/cpp/imgui_stdlib.h</code>.</p></div>
+
+<h2>Return values and item queries</h2>
+<p>Every widget returns <code>true</code> on each frame its value changes. While dragging a slider, that is <i>every frame</i>. That's fine for live preview, but wrong for an <b>undo system</b>: one drag would create 60 undo entries per second. ImGui has <b>item queries</b> that refer to the last widget you submitted:</p>
+<table>
+  <tr><th>Query</th><th>True when</th></tr>
+  <tr><td><code>IsItemActivated()</code></td><td>The user just started interacting (mouse down / focus). <b>Snapshot the old value here.</b></td></tr>
+  <tr><td><code>IsItemActive()</code></td><td>Every frame while held or being typed into</td></tr>
+  <tr><td><code>IsItemEdited()</code></td><td>The value changed this frame (same as the return value)</td></tr>
+  <tr><td><code>IsItemDeactivated()</code></td><td>The user just released / unfocused</td></tr>
+  <tr><td><code>IsItemDeactivatedAfterEdit()</code></td><td>Released <i>and</i> the value changed. <b>Push one undo command here.</b></td></tr>
+</table>
+<pre><code class="cpp">static Entity before;
+ImGui::DragFloat3("Position", e-&gt;position, 0.05f);
+if (ImGui::IsItemActivated())            before = *e;                  // drag started
+if (ImGui::IsItemDeactivatedAfterEdit()) UndoPush(index, before, *e);  // one entry per drag</code></pre>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>This pattern of a snapshot on activate and a commit on deactivate-after-edit is how real editors get one undo step per gesture. It's also the right moment to mark the scene "dirty" (unsaved changes), send a network sync, or rebuild an expensive resource such as a physics shape. Do it when the user lets go of the slider, not while they drag it.</p></div>
+
+<h2>The example code</h2>
+<p>The <b>Inspector</b> window edits the selected entity: name (<code>InputText</code>), position, rotation and scale (<code>DragFloat3</code>), a logarithmic uniform-scale slider, spin settings, and a texture index (<code>InputInt</code>). Each edit goes through a small helper that uses <code>IsItemActivated</code> / <code>IsItemDeactivatedAfterEdit</code> to give you a working one-step <b>Undo last edit</b> button. Watch the <b>edits so far</b> counter: a long drag counts as one edit, not one per frame. Each edit also writes an <code>Engine_Log</code> line, which you'll display in the console lesson. The <b>Camera</b> window edits <code>gCamera</code> directly.</p>
+<div class="tip"><b>Labels and IDs</b>
+<p><code>"##spinSpeed"</code> in the code is a label that shows nothing. The text after <code>##</code> only makes the ID unique. Lesson 06 explains this in detail.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <code>DragInt</code> called <b>"Mesh"</b> that edits <code>e-&gt;mesh</code> in the range <code>0..MESH_COUNT-1</code>, and show the mesh name next to it with <code>gMeshNames</code>.</li>
+    <li>Make the Rotation drag wrap around at 0/360 instead of clamping (hint: a flag), with range 0..360.</li>
+    <li>Add a "Commit name" text field that only renames the entity when <kbd>Enter</kbd> is pressed, using a separate <code>static char</code> buffer.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1
+ImGui::DragInt("Mesh", &amp;e-&gt;mesh, 0.05f, 0, MESH_COUNT - 1, "%d", ImGuiSliderFlags_AlwaysClamp);
+ImGui::SameLine();
+ImGui::TextDisabled("(%s)", gMeshNames[e-&gt;mesh]);
+
+// 2
+ImGui::DragFloat3("Rotation", e-&gt;rotation, 0.5f, 0.0f, 360.0f, "%.1f deg", ImGuiSliderFlags_WrapAround);
+
+// 3
+static char newName[32] = "";
+if (ImGui::InputTextWithHint("##rename", "new name + Enter", newName, sizeof(newName),
+                             ImGuiInputTextFlags_EnterReturnsTrue))
+{
+    strncpy(e-&gt;name, newName, sizeof(e-&gt;name) - 1);
+    e-&gt;name[sizeof(e-&gt;name) - 1] = 0;
+    newName[0] = 0;
+}</code></pre>
+  </details>
+</div>

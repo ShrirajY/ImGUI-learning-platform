@@ -1,0 +1,119 @@
+<p class="lead">You already know how to open a Win32 window, create a WGL context and draw with fixed-function OpenGL. This course adds the missing piece for building tools: a fast, practical user interface, with <b>Dear ImGui</b>. By the end you will have built the main panels of a small game-engine editor.</p>
+
+<h2>What is Dear ImGui?</h2>
+<p>Dear ImGui is a free C++ library by Omar Cornut for building <b>immediate-mode</b> graphical user interfaces. It doesn't create native Win32 controls. It produces a list of textured triangles, and your OpenGL code draws them on top of your scene, in the same window and the same frame.</p>
+<ul>
+  <li><b>Small and self-contained.</b> A handful of .cpp files you compile into your program. No DLLs, no build system, no dependencies.</li>
+  <li><b>Renderer-agnostic.</b> The core never calls OpenGL. Small "backend" files connect it to Win32, OpenGL, DirectX, Vulkan, SDL, GLFW and others.</li>
+  <li><b>Very little code per feature.</b> A slider that edits a float is one line: <code>ImGui::SliderFloat("Speed", &amp;speed, 0.0f, 10.0f);</code></li>
+  <li><b>Built for programmers.</b> It's designed for tools, debuggers and editors rather than end-user apps with heavy theming.</li>
+</ul>
+
+<div class="mock">
+  <div class="mock-title">Engine Controls</div>
+  <div class="mock-body">
+    <div class="mock-row"><span class="mock-check">&#10003;</span> Show grid</div>
+    <div class="mock-row"><span class="mock-frame">0.750</span> Time scale</div>
+    <div class="mock-row"><span class="mock-btn">Reset scene</span></div>
+  </div>
+</div>
+<p class="muted small">This is roughly what an ImGui window looks like, and it takes about five lines of code.</p>
+
+<h2>Why game engines love it</h2>
+<table>
+  <tr><th>Use</th><th>Example</th></tr>
+  <tr><td>Editors</td><td>Unity-like hierarchy, inspector, asset browser, scene viewport panels</td></tr>
+  <tr><td>Debug tools</td><td>Live tweaking of physics constants, AI state viewers, frame-time graphs, memory stats</td></tr>
+  <tr><td>In-game consoles</td><td>A drop-down console with command history and a scrolling log</td></tr>
+  <tr><td>Profilers</td><td>Timelines and plots, drawn with ImGui's draw lists</td></tr>
+</table>
+<p>Many shipped games and engines use Dear ImGui for internal tools. The reason is simple: <b>the UI is just code that reads and writes your engine's variables.</b> You don't need a UI designer, data binding, or extra classes that you have to keep in sync.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Your engine already has a main loop that renders a frame every 16 ms. ImGui fits into that loop. Each frame you describe the editor panels, and ImGui draws them after your 3D scene. Pausing, stepping, inspecting and editing entities all happen inside the running game, with no separate editor process.</p></div>
+
+<h2>How this platform works</h2>
+<p>Each lesson page has two halves:</p>
+<ol>
+  <li><b>Left: the lesson text.</b> Explanations, code excerpts, tips, challenges and a short quiz.</li>
+  <li><b>Right: a live code editor.</b> It contains the lesson's starter code, a file called <code>Lesson.inl</code>. Edit it freely. Your changes are saved in the browser.</li>
+</ol>
+<p>When you press <b>Build &amp; Run</b> (or <kbd>Ctrl</kbd>+<kbd>Enter</kbd>), the local server:</p>
+<ol>
+  <li>writes your code to <code>Lesson.inl</code>,</li>
+  <li>compiles the mini engine <code>OGL.c</code>, which does <code>#include "Lesson.inl"</code> at the very bottom, with the real <b>MSVC</b> compiler (<code>cl.exe /TP</code>),</li>
+  <li>links it with the prebuilt Dear ImGui objects, and</li>
+  <li>opens a <b>real native Win32 + OpenGL window</b> running your UI.</li>
+</ol>
+<p>Compiler errors and warnings show up in the output panel and are highlighted in the editor. Click one to jump to the line.</p>
+
+<div class="note"><b>The two functions you write</b>
+<pre><code class="cpp">void Lesson_Init(void)   // called once, right after ImGui is initialised
+{
+}
+
+void Lesson_UI(void)     // called every frame, between ImGui::NewFrame() and ImGui::Render()
+{
+    ImGui::Begin("Hello");
+    ImGui::Text("Entities: %d", gEntityCount);
+    ImGui::End();
+}</code></pre>
+<p>Your code can use everything in the engine's <b>ENGINE API</b> block: <code>gEntities</code>, <code>gCamera</code>, <code>gLight</code>, <code>gClearColor</code>, <code>Engine_AddEntity()</code>, <code>Engine_Log()</code> and more. See the <a href="#/engine-api">Engine API</a> page.</p></div>
+
+<h2>The mini engine</h2>
+<p>Every lesson runs inside the same small "engine". It's the same classic Win32 + fixed-function OpenGL skeleton you already know, extended with a few features:</p>
+<ul>
+  <li><b>A scene of entities</b>: Ground, Crate, Planet, Pyramid, Pillar. Each has a name, mesh, position/rotation/scale, color, texture, visibility and spin.</li>
+  <li><b>An orbit camera</b> (<code>gCamera</code>) with target, yaw, pitch, distance and FOV.</li>
+  <li><b>A directional light</b> (<code>gLight</code>), clear color, grid, wireframe and pause.</li>
+  <li><b>Mouse picking</b>: left-click an object and <code>gSelectedEntity</code> changes.</li>
+  <li><b>A log</b> (<code>Engine_Log</code>), frame-time history and procedural textures.</li>
+</ul>
+<table>
+  <tr><th>Control</th><th>Action</th></tr>
+  <tr><td><kbd>RMB</kbd> drag</td><td>Orbit camera</td></tr>
+  <tr><td><kbd>MMB</kbd> drag</td><td>Pan</td></tr>
+  <tr><td>Mouse wheel</td><td>Zoom</td></tr>
+  <tr><td><kbd>LMB</kbd> click</td><td>Select entity</td></tr>
+  <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Q</kbd><kbd>E</kbd></td><td>Move camera target</td></tr>
+  <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>Fullscreen / quit</td></tr>
+</table>
+<div class="tip"><b>The UI comes first</b>
+<p>Camera and picking only react when the mouse is <i>not</i> over an ImGui window, and WASD only works when you're not typing in a text field. Lesson 01 shows how this works, using <code>io.WantCaptureMouse</code>.</p></div>
+
+<h2>The learning path</h2>
+<table>
+  <tr><th>Section</th><th>You will learn</th></tr>
+  <tr><td>Getting Started</td><td>The immediate-mode idea, and how ImGui is wired into a plain OGL.c</td></tr>
+  <tr><td>Core Widgets</td><td>Windows, buttons, sliders, drags, text input, colors, and the ID stack</td></tr>
+  <tr><td>Layout &amp; Structure</td><td>Layout, combos and lists, tree nodes, a hierarchy + inspector</td></tr>
+  <tr><td>Editor Features</td><td>Menus, popups, tables, an in-game console, input capture, drag and drop</td></tr>
+  <tr><td>Visuals &amp; Tools</td><td>Plots and a profiler, custom drawing, textures and assets, styling and fonts</td></tr>
+  <tr><td>Putting It Together</td><td>A complete mini editor capstone, and where to go next</td></tr>
+</table>
+
+<h2>Using ImGui in your own projects</h2>
+<p>When you want ImGui in your own OGL.c outside this website, use the <b>starter template</b>. It sits next to this platform:</p>
+<pre><code class="cpp">setup\ImGui_OpenGL_Template.zip        (also unzipped in setup\ImGui_OpenGL_Template\)
+    OGL.c              Win32 + OpenGL + ImGui, ImGui code marked with //=====IMGUI===== banners
+    run.bat            cl.exe /TP ... + link.exe -&gt; bin\OGL.exe
+    external\imgui\    Dear ImGui core + Win32 and OpenGL2 backends</code></pre>
+<p><a class="btn primary" href="downloads/ImGui_OpenGL_Template.zip" download>&#11015; Download ImGui_OpenGL_Template.zip</a></p>
+<p>Open the <b>x64 Native Tools Command Prompt for VS 2022</b>, <code>cd</code> into the folder and run <code>run.bat</code>. Lesson 02 walks through every ImGui section of that OGL.c, line by line. The <a href="#/setup">Setup</a> page has installation help if the build tools are missing.</p>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Check the status pill in the top bar. It should say the compiler is found. If not, follow the <a href="#/setup">Setup</a> page.</li>
+    <li>Open the <a href="#/playground">Playground</a>, press Build &amp; Run, and orbit the camera with the right mouse button.</li>
+    <li>In the Playground, change the window title in <code>ImGui::Begin("Playground")</code> to your own name and rebuild.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">void Lesson_UI(void)
+{
+    ImGui::Begin("My Engine");              // the title is shown in the window's title bar
+    ImGui::Text("Entities in scene: %d", gEntityCount);
+    ImGui::End();
+}</code></pre>
+  </details>
+</div>

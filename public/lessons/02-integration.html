@@ -1,0 +1,257 @@
+<p class="lead">This lesson goes through the starter <b>OGL.c</b> from <code>setup\ImGui_OpenGL_Template</code>: a normal Win32 + fixed-function OpenGL program (window, WndProc, initialize, display, update, uninitialize) with Dear ImGui added. Every ImGui addition is wrapped in a banner, so you can find them all by searching for <code>IMGUI</code>.</p>
+
+<pre><code class="cpp">//================================IMGUI==============================================
+    ... ImGui code ...
+//===================================================================================</code></pre>
+
+<p>There are only <b>six</b> such banners. Five are small hooks inside the functions you already know, and the sixth holds three helper functions at the bottom of the file:</p>
+<table>
+  <tr><th>#</th><th>Where</th><th>What it adds</th></tr>
+  <tr><td>1</td><td>Top of file</td><td>ImGui headers, the WndProc handler declaration, the three <code>IMGUI_*</code> prototypes, UI variables</td></tr>
+  <tr><td>2</td><td><code>WndProc()</code></td><td>Give every message to ImGui first</td></tr>
+  <tr><td>3</td><td><code>initialize()</code></td><td>Call <code>IMGUI_initialize()</code> after the GL context exists</td></tr>
+  <tr><td>4</td><td><code>display()</code></td><td>Use a UI-controlled clear color, then call <code>IMGUI_display()</code> before <code>SwapBuffers()</code></td></tr>
+  <tr><td>5</td><td><code>uninitialize()</code></td><td>Call <code>IMGUI_uninitialize()</code> before the GL context is deleted</td></tr>
+  <tr><td>6</td><td>Bottom of file</td><td>The bodies of <code>IMGUI_initialize()</code>, <code>IMGUI_display()</code>, <code>IMGUI_uninitialize()</code></td></tr>
+</table>
+
+<h2>1. Headers and declarations</h2>
+<pre><code class="cpp">//================================IMGUI==============================================
+// ImGui is a C++ library, so run.bat compiles this file as C++ using /TP
+#include "imgui.h"
+#include "imgui_impl_win32.h"
+#include "imgui_impl_opengl2.h"
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+void IMGUI_initialize(void);
+void IMGUI_display(void);
+void IMGUI_uninitialize(void);
+
+static bool g_ImGuiInitialized = false;
+
+// values controlled from the ImGui window
+float gClearColor[3] = { 0.1f, 0.1f, 0.1f };
+bool  gRotate = true;
+//===================================================================================</code></pre>
+<ul>
+  <li><code>imgui.h</code> is the whole public API: <code>ImGui::Begin</code>, <code>Button</code>, <code>SliderFloat</code>, and so on.</li>
+  <li><code>imgui_impl_win32.h</code> and <code>imgui_impl_opengl2.h</code> declare the two <b>backends</b> (lesson 01): Win32 for input, OpenGL2 for drawing.</li>
+  <li>The <code>extern</code> line is needed because <code>imgui_impl_win32.h</code> hides the WndProc handler declaration behind <code>#if 0</code>, so that the header doesn't force <code>&lt;windows.h&gt;</code> on everyone. You declare it yourself after including windows.h.</li>
+  <li><code>gClearColor</code> and <code>gRotate</code> are ordinary globals. The ImGui window edits them, and the existing OpenGL code reads them.</li>
+</ul>
+
+<h2>2. Forward input in WndProc</h2>
+<pre><code class="cpp">LRESULT CALLBACK WndProc(HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
+{
+//================================IMGUI==============================================
+    // Give every window message to ImGui first (mouse, keyboard, ...)
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, iMsg, wParam, lParam))
+        return TRUE;
+//===================================================================================
+
+    switch (iMsg)
+    {
+    ...</code></pre>
+<p>The Win32 backend reads <code>WM_MOUSEMOVE</code>, <code>WM_LBUTTONDOWN</code>, <code>WM_MOUSEWHEEL</code>, <code>WM_KEYDOWN</code>, <code>WM_CHAR</code>, <code>WM_SETFOCUS</code> and similar messages, and writes them into <code>ImGuiIO</code>. It returns non-zero only for the few messages it handles completely (such as <code>WM_SETCURSOR</code> when ImGui sets the mouse cursor). Then we return immediately. For everything else your normal switch runs as before.</p>
+<div class="note"><b>Is it safe before ImGui is initialised?</b>
+<p>Yes. <code>CreateWindowEx()</code> sends <code>WM_CREATE</code>, <code>WM_SIZE</code> and more <i>before</i> <code>initialize()</code> runs. The handler checks for a missing ImGui context and simply returns 0.</p></div>
+
+<h2>3. Initialise ImGui after the GL context</h2>
+<pre><code class="cpp">    // Make rendering context current
+    if (wglMakeCurrent(ghdc, ghrc) == FALSE) { ... return (-5); }
+    ...
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LEQUAL);
+
+//================================IMGUI==============================================
+    // ImGui must be initialized AFTER the OpenGL context is created
+    IMGUI_initialize();
+    g_ImGuiInitialized = true;
+//===================================================================================</code></pre>
+<p>The OpenGL2 backend makes real GL calls. It creates the font-atlas texture on the first <code>NewFrame</code>, and draws and deletes textures later. The simple rule is that ImGui's lifetime sits <i>inside</i> the GL context's lifetime: start it after <code>wglMakeCurrent</code> and end it before <code>wglDeleteContext</code>. The body, from the bottom of the file:</p>
+<pre><code class="cpp">void IMGUI_initialize(void)
+{
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplWin32_InitForOpenGL(ghwnd);   // Win32  : input, mouse, keyboard
+    ImGui_ImplOpenGL2_Init();               // OpenGL : draws the ImGui windows
+}</code></pre>
+<table>
+  <tr><th>Call</th><th>Purpose</th></tr>
+  <tr><td><code>IMGUI_CHECKVERSION()</code></td><td>Asserts that the header and compiled imgui.cpp match, which catches mixed versions.</td></tr>
+  <tr><td><code>ImGui::CreateContext()</code></td><td>Allocates all of ImGui's state, including <code>ImGuiIO</code>. <b>Call nothing else in ImGui before this.</b></td></tr>
+  <tr><td><code>ImGui::StyleColorsDark()</code></td><td>Picks the colour theme (also <code>StyleColorsLight</code> / <code>StyleColorsClassic</code>).</td></tr>
+  <tr><td><code>ImGui_ImplWin32_InitForOpenGL(ghwnd)</code></td><td>Platform backend: remembers the HWND and sets up timing, cursor and key mapping.</td></tr>
+  <tr><td><code>ImGui_ImplOpenGL2_Init()</code></td><td>Renderer backend: prepares to draw with fixed-function GL.</td></tr>
+</table>
+<div class="tip"><b>Optional extras you will see in real projects</b>
+<pre><code class="cpp">ImGuiIO &amp;io = ImGui::GetIO();
+io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;   // Tab / arrow keys move between widgets
+io.IniFilename = NULL;                                  // don't save window layout to imgui.ini</code></pre>
+<p>Put these right after <code>CreateContext()</code>. The ImGui Lab engine sets <code>IniFilename = NULL</code> but leaves keyboard navigation off: with navigation on, <code>io.WantCaptureKeyboard</code> stays true whenever any ImGui window has focus, which would block the WASD camera keys. The starter keeps the default, so it writes an <code>imgui.ini</code> next to the exe that remembers window positions between runs.</p></div>
+
+<h2>4. Draw the UI every frame, before SwapBuffers</h2>
+<pre><code class="cpp">void display(void)
+{
+//================================IMGUI==============================================
+    // Background color comes from the ImGui color editor
+    glClearColor(gClearColor[0], gClearColor[1], gClearColor[2], 1.0f);
+//===================================================================================
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    ... your normal triangle drawing ...
+
+//================================IMGUI==============================================
+    // Draw ImGui on top of the scene, just before SwapBuffers
+    IMGUI_display();
+//===================================================================================
+
+    SwapBuffers(ghdc);
+}</code></pre>
+<p>The first banner shows how ImGui connects to your scene: <code>glClearColor</code> now reads a variable that the UI edits. The second one draws the UI <b>last</b>, so it sits on top of the 3D scene, and <b>before</b> <code>SwapBuffers</code>, so it's in the same frame.</p>
+<pre><code class="cpp">void IMGUI_display(void)
+{
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL2_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    // Our UI : one window with a text, a color editor and a checkbox
+    ImGui::Begin("Hello, ImGui!");
+    ImGui::Text("This is my first ImGui window");
+    ImGui::ColorEdit3("Background", gClearColor);
+    ImGui::Checkbox("Rotate triangle", &amp;gRotate);
+    ImGui::End();
+
+    // Rendering
+    ImGui::Render();
+    ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+}</code></pre>
+<ol>
+  <li><b>Three NewFrame calls, in this order:</b> renderer backend (creates the font texture on the first frame), platform backend (updates <code>io.DisplaySize</code>, <code>io.DeltaTime</code>, mouse position), then <code>ImGui::NewFrame()</code> (starts a fresh UI frame).</li>
+  <li><b>Your UI code.</b> Any number of <code>Begin/End</code> windows. In ImGui Lab, this is exactly where <code>Lesson_UI()</code> is called.</li>
+  <li><b><code>ImGui::Render()</code></b> finalises the frame into <code>ImDrawData</code> (vertex and index buffers). It doesn't call OpenGL.</li>
+  <li><b><code>ImGui_ImplOpenGL2_RenderDrawData()</code></b> issues the actual GL calls.</li>
+</ol>
+
+<h2>5. Shut down before the GL context dies</h2>
+<pre><code class="cpp">void uninitialize(void)
+{
+//================================IMGUI==============================================
+    // Shutdown ImGui BEFORE the OpenGL context is deleted
+    IMGUI_uninitialize();
+//===================================================================================
+
+    ... wglMakeCurrent(NULL, NULL); wglDeleteContext(ghrc); ReleaseDC(...); ...
+}
+
+void IMGUI_uninitialize(void)
+{
+    if (g_ImGuiInitialized)
+    {
+        ImGui_ImplOpenGL2_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+        g_ImGuiInitialized = false;
+    }
+}</code></pre>
+<p>This is the reverse of initialisation: renderer, then platform, then context. <code>ImGui_ImplOpenGL2_Shutdown()</code> deletes the font texture with <code>glDeleteTextures</code>, so the context must still be current. The <code>g_ImGuiInitialized</code> flag makes this safe when <code>initialize()</code> failed early and ImGui was never created.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Keeping ImGui inside three functions with banners around every call site is a good habit for a real engine. The editor layer then stays separate from the runtime. Some engines compile those functions out entirely in shipping builds (<code>#ifdef EDITOR</code>), and the game runs exactly the same without them.</p></div>
+
+<h2>Building: run.bat</h2>
+<pre><code class="cpp">cl.exe /c /EHsc /std:c++17 /TP /I external/imgui ^
+    OGL.c ^
+    external/imgui/imgui.cpp ^
+    external/imgui/imgui_draw.cpp ^
+    external/imgui/imgui_widgets.cpp ^
+    external/imgui/imgui_tables.cpp ^
+    external/imgui/imgui_demo.cpp ^
+    external/imgui/imgui_impl_opengl2.cpp ^
+    external/imgui/imgui_impl_win32.cpp ^
+    /Fo"intermediate\\"
+
+link.exe intermediate\OGL.obj intermediate\imgui.obj intermediate\imgui_demo.obj ^
+    intermediate\imgui_draw.obj intermediate\imgui_widgets.obj intermediate\imgui_tables.obj ^
+    intermediate\imgui_impl_opengl2.obj intermediate\imgui_impl_win32.obj ^
+    User32.lib GDI32.lib OpenGL32.lib ^
+    /SUBSYSTEM:WINDOWS /OUT:bin\OGL.exe
+
+bin\OGL.exe</code></pre>
+<table>
+  <tr><th>Part</th><th>Why</th></tr>
+  <tr><td><code>/c</code></td><td>Compile only. Each .cpp becomes an .obj in <code>intermediate\</code> (<code>/Fo</code>).</td></tr>
+  <tr><td><code>/TP</code></td><td>Treat <b>all</b> files as C++, including <code>OGL.c</code>. ImGui uses namespaces, references and default arguments, so a C compile of OGL.c would fail on <code>#include "imgui.h"</code>.</td></tr>
+  <tr><td><code>/EHsc /std:c++17</code></td><td>Standard C++ exception model and language version.</td></tr>
+  <tr><td><code>/I external/imgui</code></td><td>So <code>#include "imgui.h"</code> is found.</td></tr>
+  <tr><td>7 ImGui .cpp files</td><td>4 core files + the demo (needed for <code>ShowDemoWindow</code>) + 2 backends.</td></tr>
+  <tr><td><code>User32 GDI32 OpenGL32</code></td><td>Windows, pixel formats and GL. The Win32 backend loads XInput dynamically, so no extra lib is needed.</td></tr>
+  <tr><td><code>/SUBSYSTEM:WINDOWS</code></td><td>Uses <code>WinMain</code> and opens no console window.</td></tr>
+</table>
+<p>Run it from the <b>x64 Native Tools Command Prompt for VS 2022</b> so that <code>cl.exe</code> and <code>link.exe</code> are on the PATH. ImGui Lab does the same thing, except that it compiles ImGui only once and caches the .obj files, which is why your builds take about a second.</p>
+
+<h2>Common pitfalls</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause and fix</th></tr>
+  <tr><td>UI draws, but you can't click or type anything</td><td>The WndProc forwarding (banner 2) is missing, or it's in a different window's WndProc.</td></tr>
+  <tr><td>Crash or assert on the first ImGui call</td><td>An ImGui function was called before <code>CreateContext()</code>, e.g. <code>ImGui::GetIO()</code> in <code>WM_SIZE</code> during <code>CreateWindowEx</code>. Guard with your init flag.</td></tr>
+  <tr><td>Nothing visible, no errors</td><td><code>IMGUI_display()</code> is called after <code>SwapBuffers</code>, or <code>RenderDrawData</code> is missing.</td></tr>
+  <tr><td>Text is solid blocks or missing</td><td>No GL context was current when the backend created the font texture on the first frame (for example, ImGui was started before <code>wglMakeCurrent</code> and a frame ran early, or the context was made current on another thread).</td></tr>
+  <tr><td>UI tinted, foggy or textured strangely</td><td>Leftover fixed-function state that the backend doesn't reset, for example <code>GL_FOG</code>, <code>GL_TEXTURE_GEN_S/T</code>, a bound VBO or a <code>glUseProgram</code> shader. Disable those after drawing your scene.</td></tr>
+  <tr><td>Pressing Esc while typing quits the app</td><td>Your own key handling ignores <code>io.WantCaptureKeyboard</code> (see challenge 2).</td></tr>
+  <tr><td>Crash on exit</td><td>ImGui was shut down <i>after</i> <code>wglDeleteContext</code>. Keep banner 5 first in <code>uninitialize()</code>.</td></tr>
+</table>
+<div class="note"><b>What about wireframe?</b>
+<p>If your scene uses <code>glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)</code>, the current OpenGL2 backend saves it, switches to <code>GL_FILL</code> for the UI and restores it afterwards. It also handles depth test, lighting, culling, blending, viewport and matrices. Older backends and hand-written renderers often didn't, which is why resetting <code>GL_FILL</code> after your scene is still a good habit. The engine does it, and you can test it with the <b>Wireframe scene</b> checkbox.</p></div>
+
+<h2>The example code</h2>
+<p>The engine has already done all of the above, so the code on the right uses the integration directly. It shows the ImGui version and backends, and has toggles for the three built-in tool windows:</p>
+<ul>
+  <li><code>ImGui::ShowDemoWindow()</code>: <b>the</b> reference. Every widget and flag is demonstrated, and the source is in <code>imgui_demo.cpp</code>. When you wonder "can ImGui do X?", look here first.</li>
+  <li><code>ImGui::ShowMetricsWindow()</code>: windows, draw calls, vertices, and an Item Picker.</li>
+  <li><code>ImGui::ShowAboutWindow()</code>: version and build configuration.</li>
+</ul>
+<p>Spend ten minutes in the Demo window. Open <b>Widgets</b>, <b>Layout</b>, <b>Tables</b> and <b>Tools</b>, and in <b>Configuration</b> try the style editor.</p>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>In the Demo window, find <b>Widgets &gt; Basic</b> and <b>Widgets &gt; Plotting</b>. Then search <code>imgui_demo.cpp</code> for <code>"Plotting"</code> to see the code behind it.</li>
+    <li>In the starter OGL.c, Esc quits even while you're typing in an ImGui widget. Fix <code>WM_KEYDOWN</code> so it ignores keys when ImGui wants the keyboard.</li>
+    <li>In the starter, add <code>io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;</code> to <code>IMGUI_initialize()</code> and a <code>SliderFloat</code> for a new <code>gSpeed</code> variable used in <code>update()</code> instead of the fixed <code>0.05f</code>.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// Challenge 2 - WndProc
+case WM_KEYDOWN:
+    if (g_ImGuiInitialized &amp;&amp; ImGui::GetIO().WantCaptureKeyboard)
+        break;                              // the key belongs to ImGui
+    switch (wParam)
+    {
+    case VK_ESCAPE:
+        gbEscapeKeyIsPressed = TRUE;
+        break;
+    }
+    break;
+
+// Challenge 3 - globals (inside the first IMGUI banner)
+float gSpeed = 0.05f;
+
+// IMGUI_initialize(), after CreateContext()
+ImGuiIO &amp;io = ImGui::GetIO();
+io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+// IMGUI_display(), inside Begin/End
+ImGui::SliderFloat("Speed", &amp;gSpeed, 0.0f, 1.0f);
+
+// update()
+angle = angle + gSpeed;</code></pre>
+  </details>
+</div>

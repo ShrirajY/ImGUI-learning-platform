@@ -1,0 +1,88 @@
+<h1>Engine API</h1>
+<p class="lead">Everything your lesson code can use besides ImGui itself. It is all defined in <code>sandbox/engine/OGL.c</code>, and your <code>Lesson.inl</code> is included at the bottom of that file.</p>
+<p><button class="btn" id="viewEngineSrc">View the full engine OGL.c</button></p>
+
+<h2>Lesson hooks (you write these)</h2>
+<pre><code class="cpp">void Lesson_Init(void);   // once, after ImGui is initialised and before the first frame (load fonts, set style, log)
+void Lesson_UI(void);     // every frame, between ImGui::NewFrame() and ImGui::Render()</code></pre>
+<p>Frame order: <code>RenderScene()</code> &rarr; <code>NewFrame()</code> &rarr; <b><code>Lesson_UI()</code></b> &rarr; camera input (checks <code>io.WantCaptureMouse/Keyboard</code>) &rarr; <code>Render()</code> &rarr; <code>SwapBuffers()</code>.</p>
+
+<h2>Scene / entities</h2>
+<pre><code class="cpp">enum MeshType { MESH_CUBE, MESH_SPHERE, MESH_PYRAMID, MESH_CYLINDER, MESH_PLANE, MESH_COUNT };
+const char *gMeshNames[MESH_COUNT];      // "Cube", "Sphere", ...  (ready for ImGui::Combo)
+
+struct Entity {
+    char  name[32];
+    int   mesh;            // MeshType
+    float position[3];
+    float rotation[3];     // Euler degrees X, Y, Z
+    float scale[3];
+    float color[4];        // RGBA 0..1  (alpha &lt; 1 = transparent)
+    int   texture;         // index into gTextures, -1 = none
+    bool  visible;
+    bool  spin;            // auto-rotate around Y
+    float spinSpeed;       // deg/s
+};
+Entity gEntities[MAX_ENTITIES];          // MAX_ENTITIES = 128
+int    gEntityCount;
+int    gSelectedEntity;                  // -1 = none. Left-click in the 3D view changes it.</code></pre>
+<table>
+  <tr><th>Function</th><th>Description</th></tr>
+  <tr><td><code>int Engine_AddEntity(const char *name, int mesh)</code></td><td>Adds an entity and returns its index (-1 if the scene is full).</td></tr>
+  <tr><td><code>void Engine_RemoveEntity(int index)</code></td><td>Removes it and shifts the later entities down. Fixes up <code>gSelectedEntity</code>.</td></tr>
+  <tr><td><code>int Engine_DuplicateEntity(int index)</code></td><td>Copies an entity, offset by +1.5 on X.</td></tr>
+  <tr><td><code>void Engine_ResetScene()</code> / <code>Engine_ClearScene()</code></td><td>Restores the default 5-entity scene, or removes everything.</td></tr>
+  <tr><td><code>void Engine_FocusEntity(int index)</code></td><td>Moves the camera target to the entity.</td></tr>
+  <tr><td><code>bool Engine_WorldToScreen(const float world[3], ImVec2 *out)</code></td><td>Projects a 3D point to ImGui screen coordinates. Returns false if it is behind the camera.</td></tr>
+  <tr><td><code>void Engine_Quit()</code></td><td>Closes the window.</td></tr>
+</table>
+
+<h2>Camera, light, render settings</h2>
+<pre><code class="cpp">struct Camera { float target[3]; float yaw, pitch, distance, fov, moveSpeed; } gCamera;
+struct Light  { float direction[3]; float color[3]; float ambient[3]; bool enabled; } gLight;
+
+float gClearColor[4];
+bool  gShowGrid, gWireframe, gShowSelection, gShowHelpOverlay;
+bool  gEnablePicking;          // LMB selects entities in the viewport
+bool  gCameraInputEnabled;     // mouse + WASD camera controls
+bool  gPaused;  float gTimeScale;  bool gVSync;</code></pre>
+
+<h2>Time and stats</h2>
+<pre><code class="cpp">float gDeltaTime;              // seconds since last frame (unscaled)
+float gTime;                   // scaled time, stops when paused
+int   gFrameCount;
+float gFrameTimes[FRAME_HISTORY];   // ms per frame, ring buffer (FRAME_HISTORY = 120)
+int   gFrameTimeOffset;             // next write index, use as PlotLines values_offset
+float Engine_AverageFrameTimeMs(void);
+int   gWindowWidth, gWindowHeight;  // client size
+HWND  ghwnd;</code></pre>
+
+<h2>Log</h2>
+<pre><code class="cpp">enum LogLevel { LOG_INFO, LOG_WARN, LOG_ERROR };
+struct LogLine { int level; float time; char text[240]; };
+
+void Engine_Log(const char *fmt, ...);        // printf-style
+void Engine_LogWarn(const char *fmt, ...);
+void Engine_LogError(const char *fmt, ...);
+int  Engine_GetLogCount(void);
+const LogLine *Engine_GetLog(int i);           // 0 = oldest (keeps the last 512 lines)
+void Engine_ClearLog(void);</code></pre>
+
+<h2>Textures</h2>
+<pre><code class="cpp">struct TextureAsset { char name[32]; GLuint glId; int width, height; };
+TextureAsset gTextures[MAX_TEXTURES];   // built-in: Checker, Bricks, Gradient, Hazard, Grass, Dots
+int gTextureCount;
+
+int         Engine_CreateTexture(const char *name, int w, int h, const unsigned char *rgba); // returns index
+ImTextureID Engine_TexID(int textureIndex);    // ImGui::Image(Engine_TexID(i), ImVec2(64, 64));</code></pre>
+
+<h2>Default controls</h2>
+<table>
+  <tr><td>Right mouse drag</td><td>Orbit camera</td></tr>
+  <tr><td>Middle mouse drag</td><td>Pan</td></tr>
+  <tr><td>Mouse wheel</td><td>Zoom</td></tr>
+  <tr><td>Left click</td><td>Select entity (sets <code>gSelectedEntity</code>)</td></tr>
+  <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>Q</kbd><kbd>E</kbd></td><td>Move camera target</td></tr>
+  <tr><td><kbd>F11</kbd> / <kbd>Esc</kbd></td><td>Fullscreen / quit</td></tr>
+</table>
+<p class="muted">All of these are ignored while ImGui wants the mouse or keyboard, for example while you hover a window or type into a text field.</p>

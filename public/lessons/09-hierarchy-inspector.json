@@ -1,0 +1,33 @@
+{
+  "id": "09-hierarchy-inspector",
+  "title": "Scene Hierarchy and Inspector",
+  "summary": "The core editor pair: a TreeNodeEx hierarchy synced with viewport picking, context menus, inline rename, deferred deletion and an Inspector for the selected entity.",
+  "minutes": 35,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "A user picks 'Delete' from a row's context menu while you are inside <code>for (i = 0; i &lt; gEntityCount; i++)</code>. What should the code do?",
+      "options": ["Call <code>Engine_RemoveEntity(i)</code> immediately and <code>break</code>", "Store the index as a pending delete and remove it after all windows have been drawn", "Call <code>Engine_RemoveEntity(i)</code> and then <code>i--</code>", "Set the entity's name to an empty string"],
+      "answer": 1,
+      "explain": "Removing shifts the array while other code (the rest of the loop, the Inspector) still expects the old layout. Deferring keeps the whole frame consistent, and it is the first step toward an undo-able command system."
+    },
+    {
+      "q": "Which flag combination gives you a leaf row that needs <b>no</b> <code>TreePop()</code>?",
+      "options": ["<code>Leaf</code> only", "<code>Leaf | NoTreePushOnOpen</code>", "<code>Bullet | DefaultOpen</code>", "<code>SpanAvailWidth</code>"],
+      "answer": 1,
+      "explain": "<code>Leaf</code> only removes the arrow. The node still reports open and pushes onto the tree/ID stack unless you add <code>NoTreePushOnOpen</code>."
+    },
+    {
+      "q": "You click a mesh in the 3D view. Why does the hierarchy highlight the right row without any extra code?",
+      "options": ["ImGui listens to OpenGL picking events", "The hierarchy rebuilds the Selected flag from <code>gSelectedEntity</code> every frame", "Picking calls a hierarchy callback", "It doesn't; you must call <code>SetItemDefaultFocus()</code>"],
+      "answer": 1,
+      "explain": "Immediate mode has no stale copy of the selection: the UI reads the engine value each frame, so any writer (picking, a console command, the Inspector) is automatically reflected."
+    },
+    {
+      "q": "You pass <code>ImGuiPopupFlags_NoOpenOverItems</code> to <code>BeginPopupContextWindow</code> and now right-click does nothing. Why?",
+      "options": ["NoOpenOverItems disables the popup", "Passing flags replaces the default value 1 (<code>MouseButtonRight</code>), so you must OR it back in", "Context windows only work with the left button", "You must call OpenPopup first"],
+      "answer": 1,
+      "explain": "The <code>popup_flags</code> parameter defaults to 1 for backward compatibility. Write <code>ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems</code>."
+    }
+  ]
+}

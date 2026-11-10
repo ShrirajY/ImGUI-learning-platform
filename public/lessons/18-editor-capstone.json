@@ -1,0 +1,33 @@
+{
+  "id": "18-editor-capstone",
+  "title": "Capstone: A Mini Engine Editor",
+  "summary": "Combine menus, hierarchy, inspector, console, assets, stats, overlays and theming into one editor, organised around an editor-state struct, panel functions, deferred commands and play mode.",
+  "minutes": 45,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "Why does the editor queue Delete/Duplicate/Create instead of running them immediately?",
+      "options": ["ImGui forbids changing data inside Begin/End", "Changing the entity array while panels iterate over it shifts indices mid-loop; flushing at the end of the frame is safe", "It's faster", "So the console can print them"],
+      "answer": 1,
+      "explain": "Structural changes are deferred to <code>Ed_FlushCommands()</code>. That queue is also the natural foundation for undo/redo."
+    },
+    {
+      "q": "What does pressing Stop do in the capstone editor?",
+      "options": ["Pauses the game", "Restores the entity snapshot taken when Play was pressed", "Saves the scene to disk", "Closes the editor"],
+      "answer": 1,
+      "explain": "Play snapshots the scene and Stop restores it, so changes made by the running game are discarded, just like in Unity or Unreal."
+    },
+    {
+      "q": "Why do the editor hotkeys check <code>io.WantTextInput</code> instead of <code>io.WantCaptureKeyboard</code>?",
+      "options": ["WantCaptureKeyboard doesn't exist", "With keyboard nav on, any focused panel sets WantCaptureKeyboard, but hotkeys should only be blocked while typing", "WantTextInput is faster", "No reason"],
+      "answer": 1,
+      "explain": "Editor hotkeys should work after clicking a panel. Only an active text field should block them."
+    },
+    {
+      "q": "Why does the editor force <code>ImGuiCond_Always</code> for the first two frames?",
+      "options": ["To animate the windows", "The menu bar shrinks the viewport work area only from the next frame, so frame-1 positions would end up under the menu", "FirstUseEver doesn't work without imgui.ini", "To reset the theme"],
+      "answer": 1,
+      "explain": "<code>WorkPos/WorkSize</code> include the menu bar inset one frame late. Forcing the layout briefly fixes the initial placement."
+    }
+  ]
+}

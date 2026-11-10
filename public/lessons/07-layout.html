@@ -1,0 +1,172 @@
+<h2>How ImGui places widgets</h2>
+<p>ImGui keeps a <b>cursor</b> for every window, much like a text cursor. Each widget is drawn at the cursor, then the cursor moves <b>down</b> to the next line. All layout functions do one of three things: move the cursor, change how wide the next widgets are, or open a new region (group, child, table, tab) with its own cursor.</p>
+<p>There is no layout pass and no retained tree of boxes. The order of your function calls <i>is</i> the layout. Once that clicks, layout becomes very predictable.</p>
+
+<h2>Lines: SameLine, Spacing, Separator, Dummy</h2>
+<pre><code class="cpp">ImGui::Button("Play");  ImGui::SameLine();         // next widget goes to the right
+ImGui::Button("Pause"); ImGui::SameLine(0, 20);    // offset 0 = "right after", spacing 20 px
+ImGui::Button("Stop");
+
+ImGui::Text("Name");    ImGui::SameLine(100);      // absolute x = 100 inside the window
+ImGui::Text("%s", e-&gt;name);
+
+ImGui::Spacing();                                  // small vertical gap (ItemSpacing.y)
+ImGui::Dummy(ImVec2(0, 12));                       // invisible item of an exact size
+ImGui::Separator();                                // full-width line</code></pre>
+<table>
+  <tr><th>Call</th><th>Meaning</th></tr>
+  <tr><td><code>SameLine()</code></td><td>Next item on the same line, default spacing</td></tr>
+  <tr><td><code>SameLine(0, s)</code></td><td>Same line, exactly <code>s</code> pixels after the previous item</td></tr>
+  <tr><td><code>SameLine(x)</code></td><td>Same line, starting at window-local x position <code>x</code>. Great for aligning a column of values.</td></tr>
+  <tr><td><code>Dummy(size)</code></td><td>Reserves space without drawing anything. Use it as a spacer or to push things around.</td></tr>
+  <tr><td><code>NewLine()</code></td><td>Undo a pending SameLine / force an empty line</td></tr>
+</table>
+
+<h2>Indentation and groups</h2>
+<pre><code class="cpp">ImGui::Text("Transform");
+ImGui::Indent();                       // default = style.IndentSpacing (21 px)
+    ImGui::DragFloat3("Position", e-&gt;position, 0.05f);
+ImGui::Unindent();                     // always balance Indent/Unindent
+
+ImGui::BeginGroup();                   // everything until EndGroup becomes ONE item
+    ImGui::Button("Add");
+    ImGui::Button("Remove");
+ImGui::EndGroup();
+ImGui::SameLine();                     // ...so this goes to the right of the whole group
+ImGui::BeginGroup();
+    ImGui::Text("Entities: %d", gEntityCount);
+    ImGui::Text("Selected: %d", gSelectedEntity);
+ImGui::EndGroup();
+if (ImGui::IsItemHovered()) ImGui::SetTooltip("Hovering the whole group");</code></pre>
+<p>A group locks the starting X position, then measures its bounding box. After <code>EndGroup()</code>, the group behaves like a single widget, so <code>SameLine()</code>, <code>IsItemHovered()</code> and tooltips work on the whole block. That is how you build a column of buttons beside a column of stats.</p>
+
+<h2>Widths: SetNextItemWidth, PushItemWidth, GetContentRegionAvail</h2>
+<p>By default, sliders and inputs take about 65% of the window width and the label goes in the remaining space on the right. In an editor you usually want more control:</p>
+<pre><code class="cpp">ImGui::SetNextItemWidth(120);                       // only the next widget
+ImGui::DragFloat("Speed", &amp;gCamera.moveSpeed);
+
+ImGui::PushItemWidth(-100);                         // all following widgets: leave 100 px for labels
+ImGui::SliderFloat("FOV", &amp;gCamera.fov, 20, 120);
+ImGui::DragFloat("Distance", &amp;gCamera.distance);
+ImGui::PopItemWidth();
+
+ImVec2 avail = ImGui::GetContentRegionAvail();      // space left from the cursor to the edges
+float half = (avail.x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+ImGui::Button("Reset", ImVec2(half, 0)); ImGui::SameLine();
+ImGui::Button("Clear", ImVec2(half, 0));            // two buttons that exactly fill the row</code></pre>
+<div class="tip"><b>Width rules</b>
+<p>A positive width is in pixels. A negative width means "stop this many pixels before the right edge". <code>-FLT_MIN</code> means "all the way to the right edge" and is the idiom for full-width widgets, especially inside tables. <code>GetContentRegionAvail()</code> is your best friend for anything proportional.</p></div>
+
+<h2>Child regions: BeginChild</h2>
+<p>A child is a scrollable sub-window inside your window. Use it for lists that should scroll on their own while the buttons above them stay put.</p>
+<pre><code class="cpp">// size.x = 0 -&gt; full width, size.y = 150 -&gt; fixed height. Negative = "leave this much space".
+if (ImGui::BeginChild("EntityList", ImVec2(0, 150), ImGuiChildFlags_Borders | ImGuiChildFlags_ResizeY))
+{
+    for (int i = 0; i &lt; gEntityCount; i++)
+        ImGui::Text("%s", gEntities[i].name);
+}
+ImGui::EndChild();   // ALWAYS, like End()</code></pre>
+<table>
+  <tr><th>ImGuiChildFlags_</th><th>Effect</th></tr>
+  <tr><td><code>Borders</code></td><td>Draw a border and add window padding (renamed from <code>Border</code> in 1.91.1)</td></tr>
+  <tr><td><code>AlwaysUseWindowPadding</code></td><td>Padding even without a border</td></tr>
+  <tr><td><code>ResizeX</code> / <code>ResizeY</code></td><td>User can drag the right / bottom edge to resize</td></tr>
+  <tr><td><code>AutoResizeX</code> / <code>AutoResizeY</code></td><td>Size to fit the contents</td></tr>
+  <tr><td><code>FrameStyle</code></td><td>Look like a framed widget (this is how ListBox is made)</td></tr>
+</table>
+<div class="warn"><b>Old code alert</b>
+<p>Before 1.90, the third argument was <code>bool border</code>. You will still see <code>BeginChild("x", size, true)</code> in tutorials. It still compiles because <code>ImGuiChildFlags_Borders == 1</code>, but window flags like <code>ImGuiWindowFlags_AlwaysUseWindowPadding</code> moved into the new child flags. Write new code with <code>ImGuiChildFlags_*</code>.</p></div>
+
+<h2>Collapsing headers and tree nodes</h2>
+<pre><code class="cpp">if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+{
+    // no TreePop needed, no extra indent
+    ImGui::DragFloat3("Position", e-&gt;position, 0.05f);
+}
+
+if (ImGui::TreeNode("Advanced"))      // indents and pushes an ID
+{
+    ImGui::Checkbox("Spin", &amp;e-&gt;spin);
+    ImGui::TreePop();                  // ONLY if TreeNode returned true
+}</code></pre>
+<p><code>CollapsingHeader</code> is the big framed section bar you see in every Inspector. <code>TreeNode</code> is the lighter, indented version used for nested data. ImGui remembers the open/closed state for you (it is keyed on the label's ID).</p>
+
+<h2>Tab bars</h2>
+<pre><code class="cpp">if (ImGui::BeginTabBar("InspectorTabs"))
+{
+    if (ImGui::BeginTabItem("Camera"))  { /* camera widgets */ ImGui::EndTabItem(); }
+    if (ImGui::BeginTabItem("Lighting")){ /* light widgets  */ ImGui::EndTabItem(); }
+    ImGui::EndTabBar();                // only if BeginTabBar returned true
+}</code></pre>
+<p>Only the selected tab's contents are submitted each frame, so tabs are also a cheap way to hide expensive UI. Add <code>ImGuiTabBarFlags_Reorderable</code> to let the user drag tabs around.</p>
+
+<h2>The property grid</h2>
+<p>Every engine Inspector (Unity, Unreal, Godot) uses the same look: <b>label on the left, widget on the right</b>, all widgets left-aligned on one vertical line and stretching to the edge. ImGui's default puts the label on the right, so we build the grid ourselves. A 2-column table is the cleanest way:</p>
+<div class="mock"><div class="mock-title">Inspector</div><div class="mock-body">
+  <div class="mock-row"><span style="width:90px">Field of view</span><span class="mock-frame" style="flex:1">45.0</span></div>
+  <div class="mock-row"><span style="width:90px">Distance</span><span class="mock-frame" style="flex:1">12.0</span></div>
+  <div class="mock-row"><span style="width:90px">Show grid</span><span class="mock-check">&#10003;</span></div>
+</div></div>
+<pre><code class="cpp">static void L07_PropRow(const char *label)
+{
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();   // line the text up with the framed widget
+    ImGui::TextUnformatted(label);
+    ImGui::TableNextColumn();
+    ImGui::SetNextItemWidth(-FLT_MIN);  // widget fills the value column
+}
+
+if (ImGui::BeginTable("##props", 2, ImGuiTableFlags_SizingStretchProp))
+{
+    ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthFixed, 110.0f);
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    L07_PropRow("Field of view"); ImGui::SliderFloat("##fov", &amp;gCamera.fov, 20, 120, "%.0f deg");
+    L07_PropRow("Distance");      ImGui::DragFloat("##dist", &amp;gCamera.distance, 0.1f, 1, 200);
+    ImGui::EndTable();
+}</code></pre>
+<p>Note the <code>##</code> labels. Text after <code>##</code> is not shown, but it is still part of the widget's ID. That lets us hide the built-in label while keeping every widget unique.</p>
+<div class="note"><b>No table? Use SameLine(offset)</b>
+<p>For quick panels, <code>ImGui::AlignTextToFramePadding(); ImGui::Text("FOV"); ImGui::SameLine(110); ImGui::SetNextItemWidth(-FLT_MIN); ImGui::SliderFloat("##fov", ...)</code> gives the same look. The table version adapts better to fonts and DPI, and the user can resize the label column if you add <code>ImGuiTableFlags_Resizable</code>.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>The code for this lesson is the skeleton of a real Inspector: tabs for broad areas (Scene, Camera, Lighting, Render), collapsing headers for sections, and a property grid helper used everywhere. Write the helper once and every panel in your editor gets a consistent look. Later lessons (Hierarchy, Inspector) reuse this exact pattern.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <b>"Spin speed"</b> row to the Selected Entity section using the property grid (only enabled when <code>spin</code> is on; try <code>ImGui::BeginDisabled(!e-&gt;spin)</code>).</li>
+    <li>Make the Scene tab's entity list child fill the <b>remaining</b> height of the window, minus one row of buttons at the bottom. Hint: negative child height.</li>
+    <li>Make the tab bar reorderable, and add a fifth tab <b>"Stats"</b> showing <code>Engine_AverageFrameTimeMs()</code> in a property row.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1. inside the Selected Entity property table
+L07_PropRow("Spin speed");
+ImGui::BeginDisabled(!e-&gt;spin);
+ImGui::DragFloat("##spinspd", &amp;e-&gt;spinSpeed, 1.0f, -720, 720, "%.0f deg/s");
+ImGui::EndDisabled();
+
+// 2. leave room for one framed row (button height + spacing) under the child
+float footer = ImGui::GetFrameHeightWithSpacing();
+if (ImGui::BeginChild("EntityTree", ImVec2(0, -footer), ImGuiChildFlags_Borders)) { /* ... */ }
+ImGui::EndChild();
+if (ImGui::Button("Reset scene")) Engine_ResetScene();
+
+// 3.
+if (ImGui::BeginTabBar("InspectorTabs", ImGuiTabBarFlags_Reorderable))
+{
+    // ... existing tabs ...
+    if (ImGui::BeginTabItem("Stats"))
+    {
+        if (L07_BeginProps("##stats"))
+        {
+            L07_PropRow("Frame time"); ImGui::Text("%.2f ms", Engine_AverageFrameTimeMs());
+            ImGui::EndTable();
+        }
+        ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
+}</code></pre>
+  </details>
+</div>

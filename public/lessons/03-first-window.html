@@ -1,0 +1,82 @@
+<h2>The two rules of every ImGui window</h2>
+<p>A window is opened with <code>ImGui::Begin()</code> and closed with <code>ImGui::End()</code>. Every widget you call in between is placed inside that window, top to bottom.</p>
+<pre><code class="cpp">ImGui::Begin("Engine Controls");   // creates the window the first time, reuses it after that
+    ImGui::Text("Hello, engine!");
+ImGui::End();                      // must ALWAYS be called, even if Begin() returned false</code></pre>
+<ol>
+  <li><b>The title is the window's identity.</b> Two <code>Begin("Engine Controls")</code> calls in the same frame add widgets to the <i>same</i> window.</li>
+  <li><b>Always pair <code>Begin</code> with <code>End</code>.</b> <code>Begin()</code> returns <code>false</code> when the window is collapsed or fully clipped. You may skip the widgets in that case, but you must still call <code>End()</code>.</li>
+</ol>
+
+<div class="note"><b>Where does this code run?</b>
+<p>Your <code>Lesson_UI()</code> is called once every frame from the engine's <code>Frame()</code> function, between <code>ImGui::NewFrame()</code> and <code>ImGui::Render()</code>. That is the same spot as the widgets inside <code>IMGUI_display()</code> in the starter OGL.c.</p></div>
+
+<h2>Text</h2>
+<table>
+  <tr><th>Function</th><th>What it does</th></tr>
+  <tr><td><code>Text(fmt, ...)</code></td><td>printf-style text. <code>ImGui::Text("FPS %.1f", fps)</code></td></tr>
+  <tr><td><code>TextColored(ImVec4, fmt, ...)</code></td><td>Same, with an RGBA colour (0..1 floats)</td></tr>
+  <tr><td><code>TextWrapped(fmt, ...)</code></td><td>Wraps at the window edge, good for descriptions</td></tr>
+  <tr><td><code>TextDisabled(fmt, ...)</code></td><td>Greyed-out text for hints</td></tr>
+  <tr><td><code>BulletText(fmt, ...)</code></td><td>Text with a bullet point</td></tr>
+  <tr><td><code>LabelText(label, fmt, ...)</code></td><td>Value + label aligned like other widgets</td></tr>
+  <tr><td><code>SeparatorText("Title")</code></td><td>A horizontal line with a heading in it</td></tr>
+</table>
+<div class="warn"><b>Never pass user strings as the format.</b>
+<p><code>ImGui::Text(entity.name)</code> breaks if the name contains <code>%</code>. Use <code>ImGui::TextUnformatted(entity.name)</code> or <code>ImGui::Text("%s", entity.name)</code>.</p></div>
+
+<h2>Buttons return what happened</h2>
+<p>This is the core idea of immediate mode. There are no callbacks or event listeners. A widget function <b>draws</b> the widget and <b>returns</b> what the user did with it this frame:</p>
+<pre><code class="cpp">if (ImGui::Button("Reset scene"))     // true only on the frame of the click
+{
+    Engine_ResetScene();
+    Engine_Log("Scene reset");
+}</code></pre>
+
+<h2>Checkboxes and radio buttons edit your variables directly</h2>
+<p>You pass a <b>pointer</b> to your own data. ImGui reads it to draw the widget, and writes to it when the user clicks. The engine variable <i>is</i> the UI state:</p>
+<pre><code class="cpp">ImGui::Checkbox("Show grid", &amp;gShowGrid);          // bool*
+
+static int mode = 0;
+ImGui::RadioButton("Slow", &amp;mode, 0); ImGui::SameLine();
+ImGui::RadioButton("Fast", &amp;mode, 1);              // writes 1 into mode when clicked</code></pre>
+<p>They also return <code>true</code> on the frame the value changed, so you can react, for example to log a message or mark the scene "dirty" for saving.</p>
+
+<h2>Basic layout: SameLine, Separator, Spacing</h2>
+<ul>
+  <li><code>ImGui::SameLine()</code> puts the <i>next</i> widget to the right of the previous one.</li>
+  <li><code>ImGui::Separator()</code> draws a horizontal line.</li>
+  <li><code>ImGui::Spacing()</code> adds a little vertical space.</li>
+</ul>
+
+<h2>Window options</h2>
+<pre><code class="cpp">static bool showAbout = true;
+// 2nd argument: pointer to bool adds a close [x] button that sets it to false
+// 3rd argument: ImGuiWindowFlags
+ImGui::Begin("About", &amp;showAbout, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoCollapse);</code></pre>
+<p>Common flags: <code>NoTitleBar</code>, <code>NoResize</code>, <code>NoMove</code>, <code>NoCollapse</code>, <code>AlwaysAutoResize</code>, <code>NoBackground</code>, <code>MenuBar</code>, <code>NoSavedSettings</code>.</p>
+<p>Use <code>SetNextWindowPos</code> and <code>SetNextWindowSize</code> <b>before</b> <code>Begin</code>. With <code>ImGuiCond_FirstUseEver</code> they only apply the first time, so the user can still move and resize the window afterwards.</p>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>Most engine panels start exactly like this: a window that exposes global settings such as grid, wireframe, time scale and pause. Because <code>Checkbox</code> writes straight into <code>gWireframe</code>, you don't need a separate "UI model" to keep in sync. The engine data is the single source of truth.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a checkbox that toggles <code>gShowHelpOverlay</code> (the hint text at the bottom of the window).</li>
+    <li>Add a button <b>"Spin everything"</b> that sets <code>spin = true</code> on every entity (loop over <code>gEntities[0..gEntityCount-1]</code>).</li>
+    <li>Show the selected entity's name with <code>TextColored</code>, or <code>TextDisabled("Nothing selected")</code> when <code>gSelectedEntity == -1</code>. Click objects in the 3D view to test it.</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">ImGui::Checkbox("Help overlay", &amp;gShowHelpOverlay);
+
+if (ImGui::Button("Spin everything"))
+    for (int i = 0; i &lt; gEntityCount; i++)
+        gEntities[i].spin = true;
+
+if (gSelectedEntity &gt;= 0)
+    ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Selected: %s", gEntities[gSelectedEntity].name);
+else
+    ImGui::TextDisabled("Nothing selected");</code></pre>
+  </details>
+</div>

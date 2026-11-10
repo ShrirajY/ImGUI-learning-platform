@@ -1,0 +1,27 @@
+{
+  "id": "19-next-steps",
+  "title": "Next Steps: Docking, Modern GL & Beyond",
+  "summary": "Where to go after the capstone: the docking branch and multi-viewports, the OpenGL3 backend, an FBO Game View, ImGuizmo/ImPlot/node editors, imgui.ini persistence, debug tools and a feature checklist for your own engine editor.",
+  "minutes": 15,
+  "hasCode": false,
+  "quiz": [
+    {
+      "q": "How do you get <code>DockSpaceOverViewport</code> and <code>ImGuiConfigFlags_DockingEnable</code>?",
+      "options": ["Define IMGUI_ENABLE_DOCKING in imconfig.h", "Switch to the official docking branch (all core + backend files together)", "Install ImGuizmo", "They are already in master"],
+      "answer": 1,
+      "explain": "Docking and multi-viewports live on the <code>docking</code> branch. Replace every core and backend file at once to avoid version mismatches."
+    },
+    {
+      "q": "You show your scene's FBO colour texture with <code>ImGui::Image</code> and it appears upside down. Fix?",
+      "options": ["Rotate the camera 180 degrees", "Pass uv0=(0,1), uv1=(1,0)", "Use ImageButton instead", "Call glFlush"],
+      "answer": 1,
+      "explain": "OpenGL render targets have a bottom-left origin. Flipping V in the UVs is the standard fix."
+    },
+    {
+      "q": "Which tool helps when a button doesn't respond because of an ID conflict?",
+      "options": ["ShowStyleEditor()", "ShowIDStackToolWindow()", "ShowFontSelector()", "PlotLines()"],
+      "answer": 1,
+      "explain": "The ID Stack Tool shows the full ID path of the hovered item, so you can spot duplicates quickly."
+    }
+  ]
+}

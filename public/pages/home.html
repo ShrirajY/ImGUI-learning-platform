@@ -1,0 +1,34 @@
+<section class="hero">
+  <div class="crumb">Dear ImGui &middot; Win32 &middot; OpenGL &middot; Game engine tooling</div>
+  <h1>Learn <span class="accent">Dear ImGui</span> by building a game-engine editor</h1>
+  <p class="lead">Start from a plain <code>OGL.c</code> window and finish with a working mini editor: scene hierarchy, inspector, console, profiler, asset browser and custom themes. Every lesson compiles your code into a real OpenGL window with one click.</p>
+  <div class="hero-cta">
+    <a class="btn primary" id="continueBtn" href="#/lesson/00-welcome">Start lesson 1</a>
+    <a class="btn" href="#/playground">Open the Playground</a>
+    <a class="btn ghost" href="#/setup">Setup &amp; starter zip</a>
+  </div>
+</section>
+
+<h2>How it works</h2>
+<div class="cards">
+  <div class="card"><div class="ic">&#128214;</div><h3>1. Read</h3><p class="muted">Each lesson explains one ImGui feature and how game engines use it.</p></div>
+  <div class="card"><div class="ic">&#9998;</div><h3>2. Edit</h3><p class="muted">The editor next to each lesson holds working C++ code (<code>Lesson.inl</code>) that you can change.</p></div>
+  <div class="card"><div class="ic">&#9654;</div><h3>3. Build &amp; Run</h3><p class="muted">Your code is compiled into <code>OGL.c</code> with MSVC and opens as a native OpenGL + ImGui window.</p></div>
+  <div class="card"><div class="ic">&#10003;</div><h3>4. Check</h3><p class="muted">Try the challenges, answer the short quiz, and track your progress in the sidebar.</p></div>
+</div>
+
+<h2>Your system</h2>
+<ul class="status-list" id="homeStatus"><li>checking...</li></ul>
+
+<h2>What you will build</h2>
+<div class="cards">
+  <div class="card"><h3>Core widgets</h3><p class="muted">Windows, text, buttons, sliders, drags, colour pickers and the ID stack.</p></div>
+  <div class="card"><h3>Editor panels</h3><p class="muted">Scene hierarchy with context menus, an inspector, combos, and sortable tables.</p></div>
+  <div class="card"><h3>Engine tools</h3><p class="muted">Menu bar with shortcuts, a console with commands, drag &amp; drop, and input capture.</p></div>
+  <div class="card"><h3>Visual tools</h3><p class="muted">Frame-time profiler, HUD overlays, draw-list gizmos, world-space labels, and an asset browser.</p></div>
+  <div class="card"><h3>Look &amp; feel</h3><p class="muted">Custom engine themes, fonts and style variables.</p></div>
+  <div class="card"><h3>Capstone</h3><p class="muted">Everything combined into one mini engine editor around the 3D viewport.</p></div>
+</div>
+
+<div class="note"><b>The sandbox engine</b>
+<p>Every lesson runs inside a small engine host (<code>sandbox/engine/OGL.c</code>). It has a scene of entities (cubes, spheres, a pyramid...), an orbit camera, a directional light, mouse picking, a log and procedural textures. Your ImGui code reads and edits that engine state, exactly as an editor does in a real engine. See <a href="#/engine-api">Engine API</a>.</p></div>

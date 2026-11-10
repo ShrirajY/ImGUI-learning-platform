@@ -1,0 +1,33 @@
+{
+  "id": "11-tables",
+  "title": "Tables: Sortable, Editable Entity Lists",
+  "summary": "BeginTable flags, column setup, frozen headers, sorting through an index array with qsort, full-row selection and editable cells for bulk scene editing.",
+  "minutes": 30,
+  "hasCode": true,
+  "quiz": [
+    {
+      "q": "The user clicks the 'Name' header. What is the correct way to sort?",
+      "options": ["qsort <code>gEntities[]</code> directly", "Sort an array of entity indices and draw rows through it", "ImGui sorts the rows automatically", "Reverse the loop direction"],
+      "answer": 1,
+      "explain": "Reordering the real array changes every entity's index and breaks <code>gSelectedEntity</code> and anything else that stores indices. The table is a view: sort an index array."
+    },
+    {
+      "q": "When should you re-run your sort?",
+      "options": ["Every frame", "When <code>TableGetSortSpecs()-&gt;SpecsDirty</code> is true (and when the list itself changes), then set SpecsDirty = false", "Only in Lesson_Init", "Whenever the mouse moves"],
+      "answer": 1,
+      "explain": "SpecsDirty tells you the user changed the sort. Re-sorting every frame makes rows jump while you edit them."
+    },
+    {
+      "q": "Every row has <code>ImGui::Checkbox(\"##vis\", &amp;e-&gt;visible)</code>. Clicking row 3's checkbox toggles row 0 instead. What is missing?",
+      "options": ["<code>SetNextItemWidth(-FLT_MIN)</code>", "<code>PushID(i)</code>/<code>PopID()</code> around each row", "<code>TableSetupScrollFreeze</code>", "<code>ImGuiTableFlags_RowBg</code>"],
+      "answer": 1,
+      "explain": "All the checkboxes have the same ID, \"##vis\". Pushing the entity index makes each row's widgets unique."
+    },
+    {
+      "q": "You add <code>ImGuiTableFlags_ScrollY</code> and the table collapses or fills the whole window unexpectedly. What does it need?",
+      "options": ["An outer size in <code>BeginTable(id, cols, flags, outer_size)</code>", "A BeginChild around it", "TableSetupScrollFreeze(1, 1)", "The Resizable flag"],
+      "answer": 0,
+      "explain": "A scrolling table is its own child region, so it needs a size. For example, <code>ImVec2(0, -footerHeight)</code> fills the window but leaves room for a footer."
+    }
+  ]
+}

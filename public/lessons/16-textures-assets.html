@@ -1,0 +1,141 @@
+<h2>How a texture reaches ImGui</h2>
+<p>Dear ImGui never loads, owns or even understands textures. To ImGui, a texture is an opaque number, <code>ImTextureID</code>, that it stores in a draw command and passes back to the renderer backend. The OpenGL2 backend treats that number as a <code>GLuint</code> and calls <code>glBindTexture</code> with it. So drawing your own textures is just a cast:</p>
+<pre><code class="cpp">GLuint tex;                                   // created the OGL.c way
+glGenTextures(1, &amp;tex);
+glBindTexture(GL_TEXTURE_2D, tex);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+ImTextureID id = (ImTextureID)(intptr_t)tex;  // GLuint -&gt; ImTextureID (a 64-bit integer here)
+ImGui::Image(id, ImVec2(128, 128));</code></pre>
+<p>The engine wraps this for you. <code>gTextures[i]</code> holds the name, size and <code>glId</code>, and <code>Engine_TexID(i)</code> returns the ready-cast ID (or 0 for an invalid index).</p>
+<div class="note"><b>Same texture, two users</b>
+<p>The <code>GLuint</code> that textures the crate in the 3D view is the <i>same object</i> ImGui draws in the asset browser. There is no copy. If you change the texture (for example with <code>glTexSubImage2D</code>), both views update.</p></div>
+
+<h2>Image and its UV rectangle</h2>
+<pre><code class="cpp">void Image      (ImTextureID tex, const ImVec2&amp; size, const ImVec2&amp; uv0 = ImVec2(0,0), const ImVec2&amp; uv1 = ImVec2(1,1));
+void ImageWithBg(ImTextureID tex, const ImVec2&amp; size, const ImVec2&amp; uv0, const ImVec2&amp; uv1,
+                 const ImVec4&amp; bg_col = ImVec4(0,0,0,0), const ImVec4&amp; tint_col = ImVec4(1,1,1,1));</code></pre>
+<p><code>uv0</code> is the texture coordinate at the image's top-left corner and <code>uv1</code> at its bottom-right. Changing them gives you most "image viewer" features for free:</p>
+<table>
+  <tr><th>Effect</th><th>uv0</th><th>uv1</th><th>Why it works</th></tr>
+  <tr><td>Normal</td><td><code>(0,0)</code></td><td><code>(1,1)</code></td><td></td></tr>
+  <tr><td>Tile 4x</td><td><code>(0,0)</code></td><td><code>(4,4)</code></td><td>engine textures use <code>GL_REPEAT</code></td></tr>
+  <tr><td>Flip vertically</td><td><code>(0,1)</code></td><td><code>(1,0)</code></td><td>swap the V coordinates</td></tr>
+  <tr><td>Zoom into a corner</td><td><code>(0,0)</code></td><td><code>(0.25,0.25)</code></td><td>sub-rectangle = 4x magnified</td></tr>
+  <tr><td>One cell of a 4x4 atlas</td><td><code>(c/4, r/4)</code></td><td><code>((c+1)/4, (r+1)/4)</code></td><td>sprite sheets, icon atlases</td></tr>
+</table>
+<div class="warn"><b>Render-to-texture images are upside down</b>
+<p>OpenGL's texture origin is bottom-left, but ImGui draws top-down. Images you upload from memory look right because row 0 lands at the top. When you show an FBO colour attachment (a "Game View", see lesson 19), pass <code>uv0 = (0,1), uv1 = (1,0)</code> to flip it.</p></div>
+<p><b>Tint</b> multiplies every texel, so use <code>(1,1,1,0.4)</code> for a faded "disabled" look and <code>(1,0.5,0.5,1)</code> for a red error tint. <b>Background</b> fills in behind transparent pixels. Both live in <code>ImageWithBg</code>. (Before 1.91.9, <code>Image()</code> itself took a tint, so you will see that in older code.)</p>
+
+<h2>ImageButton</h2>
+<pre><code class="cpp">bool ImageButton(const char* str_id, ImTextureID tex, const ImVec2&amp; size,
+                 const ImVec2&amp; uv0 = ImVec2(0,0), const ImVec2&amp; uv1 = ImVec2(1,1),
+                 const ImVec4&amp; bg_col = ImVec4(0,0,0,0), const ImVec4&amp; tint_col = ImVec4(1,1,1,1));</code></pre>
+<p>The first argument is an <b>ID string</b> because many buttons can show the same texture. Inside a loop, <code>PushID(i)</code> + <code>ImageButton("##thumb", ...)</code> is the usual pattern. The button adds <code>style.FramePadding</code> on each side, coloured with <code>ImGuiCol_Button</code>, so pushing a different button colour is an easy selection highlight.</p>
+
+<h2>Building the asset browser</h2>
+<h3>A grid that wraps</h3>
+<p>ImGui has no "flow layout" widget, but one division gives you the column count:</p>
+<pre><code class="cpp">ImGuiStyle &amp;style = ImGui::GetStyle();
+float cellW  = thumb + style.FramePadding.x * 2.0f;
+int columns  = (int)((ImGui::GetContentRegionAvail().x + style.ItemSpacing.x) / (cellW + style.ItemSpacing.x));
+if (columns &lt; 1) columns = 1;
+
+for (int i = 0; i &lt; gTextureCount; i++)
+{
+    ImGui::PushID(i);
+    ImGui::BeginGroup();                                    // thumbnail + caption act as one item
+    if (ImGui::ImageButton("##thumb", Engine_TexID(i), ImVec2(thumb, thumb))) selected = i;
+    ImGui::TextUnformatted(gTextures[i].name);
+    ImGui::EndGroup();
+    ImGui::PopID();
+    if ((i % columns) != columns - 1 &amp;&amp; i + 1 &lt; gTextureCount) ImGui::SameLine();
+}</code></pre>
+<p>Resize the window and the grid reflows, because the column count is recomputed every frame. That's immediate mode at work.</p>
+
+<h3>Interactions on each thumbnail</h3>
+<ul>
+  <li><b>Click</b>: <code>ImageButton</code> returns true, so select the asset.</li>
+  <li><b>Double-click</b>: <code>IsItemHovered() &amp;&amp; IsMouseDoubleClicked(0)</code> applies it to <code>gSelectedEntity</code>.</li>
+  <li><b>Hover</b>: <code>BeginItemTooltip()</code> with a big <code>Image</code> inside shows a preview.</li>
+  <li><b>Drag</b>: source with payload <code>"TEXTURE_INDEX"</code>. The drag tooltip shows the image too. Entity rows are targets.</li>
+</ul>
+<pre><code class="cpp">if (ImGui::BeginDragDropSource())
+{
+    ImGui::SetDragDropPayload("TEXTURE_INDEX", &amp;i, sizeof(int));
+    ImGui::Image(Engine_TexID(i), ImVec2(48, 48));          // what you see under the cursor
+    ImGui::EndDragDropSource();
+}
+...
+if (ImGui::BeginDragDropTarget())                          // after each entity Selectable
+{
+    if (const ImGuiPayload *p = ImGui::AcceptDragDropPayload("TEXTURE_INDEX"))
+        gEntities[i].texture = *(const int *)p-&gt;Data;
+    ImGui::EndDragDropTarget();
+}</code></pre>
+
+<h2>Creating textures at runtime</h2>
+<p><code>Engine_CreateTexture(name, w, h, rgba)</code> uploads a tightly packed RGBA8 buffer (4 bytes per pixel, row by row) and returns the new asset index, or -1 when all <code>MAX_TEXTURES</code> slots are used. The generator fills a buffer on the CPU, then uploads it:</p>
+<pre><code class="cpp">static unsigned char px[256 * 256 * 4];                     // static: too big for the stack
+for (int y = 0; y &lt; size; y++)
+    for (int x = 0; x &lt; size; x++)
+    {
+        bool a = (((x / cellPx) + (y / cellPx)) &amp; 1) == 0;  // checker test
+        unsigned char *p = &amp;px[(y * size + x) * 4];
+        p[0] = a ? ra : rb;  p[1] = a ? ga : gb;  p[2] = a ? ba : bb;  p[3] = 255;
+    }
+int idx = Engine_CreateTexture("MyChecker", size, size, px);</code></pre>
+<p>The live preview in the generator window uses <b>no texture at all</b>. It evaluates the same pattern function at 64x64 and draws rectangles with the draw list from lesson 15. Only the "Generate" click touches the GPU.</p>
+<div class="tip"><b>Loading real image files</b>
+<p>For PNG/JPG assets, add the single header <code>stb_image.h</code>: <code>stbi_load(path, &amp;w, &amp;h, &amp;n, 4)</code> gives you exactly the RGBA buffer <code>Engine_CreateTexture</code> wants. Call <code>stbi_image_free</code> afterwards.</p></div>
+
+<div class="engine"><b>Game-engine angle</b>
+<p>A real content browser works the same way, at a bigger scale. It scans an assets folder, generates small thumbnail textures (often by rendering each mesh or material into an FBO), caches them on disk and shows them in this exact wrapping grid with drag sources. The payload is usually an asset GUID or path rather than an array index, so it stays valid when assets are added or removed. Keep a "missing texture" placeholder (the magenta checker) for asset IDs that fail to resolve.</p></div>
+
+<div class="challenge">
+  <h3>Challenges</h3>
+  <ol>
+    <li>Add a <b>search box</b> above the grid (<code>ImGuiTextFilter</code>) that hides thumbnails whose name doesn't match. Remember to compute the wrap from a running "visible index", not <code>i</code>.</li>
+    <li>Show the <b>selected entity's</b> texture in the Texture Viewer with its plane-style tiling: when the entity is a plane, preview it with <code>uv1 = (6,6)</code>, matching <code>DrawPlane()</code> in OGL.c.</li>
+    <li>Add a "Make gradient" button that creates a 64x64 texture blending colour A (left) to colour B (right).</li>
+  </ol>
+  <details><summary>Show solution</summary>
+<pre><code class="cpp">// 1) filter
+static ImGuiTextFilter filter;
+filter.Draw("Search", 160);
+int shown = 0;
+for (int i = 0; i &lt; gTextureCount; i++)
+{
+    if (!filter.PassFilter(gTextures[i].name)) continue;
+    if (shown % columns != 0) ImGui::SameLine();      // SameLine BEFORE the item, except at row start
+    shown++;
+    ImGui::PushID(i);
+    ImGui::ImageButton("##thumb", Engine_TexID(i), ImVec2(thumb, thumb));
+    ImGui::PopID();
+}
+
+// 2) selected entity preview
+if (gSelectedEntity &gt;= 0 &amp;&amp; gEntities[gSelectedEntity].texture &gt;= 0)
+{
+    const Entity *e = &amp;gEntities[gSelectedEntity];
+    float rep = (e-&gt;mesh == MESH_PLANE) ? 6.0f : 1.0f;
+    ImGui::Image(Engine_TexID(e-&gt;texture), ImVec2(128, 128), ImVec2(0, 0), ImVec2(rep, rep));
+}
+
+// 3) gradient
+if (ImGui::Button("Make gradient"))
+{
+    static unsigned char px[64 * 64 * 4];
+    for (int y = 0; y &lt; 64; y++)
+        for (int x = 0; x &lt; 64; x++)
+        {
+            float t = x / 63.0f;
+            unsigned char *p = &amp;px[(y * 64 + x) * 4];
+            for (int k = 0; k &lt; 3; k++) p[k] = (unsigned char)((colA[k] * (1 - t) + colB[k] * t) * 255.0f);
+            p[3] = 255;
+        }
+    Engine_CreateTexture("Gradient2", 64, 64, px);
+}</code></pre>
+  </details>
+</div>
