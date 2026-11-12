@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/sandbox/external/imgui"
+            ],
+            "defines": [ "_CRT_SECURE_NO_WARNINGS" ],
+            "windowsSdkVersion": "",
+            "intelliSenseMode": "windows-msvc-x64",
+            "cStandard": "c17",
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

@@ -135,6 +135,7 @@ details[open] summary { margin-bottom: 6px; }
 .ide-output-head { display: flex; justify-content: space-between; padding: 5px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid #1f2430; text-transform: uppercase; letter-spacing: .6px; }
 .build-state { text-transform: none; letter-spacing: 0; }
 .ide-log { flex: 1; margin: 0; padding: 10px 12px; overflow: auto; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; color: #b9c0cf; }
+.hint { display: block; color: #ffd479; background: #f2c94c14; border-left: 3px solid var(--yellow); padding: 6px 10px; margin: 4px 0; white-space: normal; }
 .diag { cursor: pointer; display: inline-block; }
 .diag.error { color: #ff8a8a; } .diag.warning { color: var(--yellow); }
 .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: sp 0.7s linear infinite; vertical-align: -1px; }

@@ -85,6 +85,60 @@
       ta.focus();
     }
 
+    // Brace depth at a position, ignoring braces inside comments, strings and char literals.
+    static depthAt(code, pos) {
+      let depth = 0;
+      for (let i = 0; i < pos; i++) {
+        const c = code[i], n = code[i + 1];
+        if (c === '/' && n === '/') { const j = code.indexOf('\n', i); if (j < 0 || j >= pos) break; i = j; }
+        else if (c === '/' && n === '*') { const j = code.indexOf('*/', i + 2); if (j < 0 || j >= pos) break; i = j + 1; }
+        else if (c === '"' || c === "'") { let j = i + 1; while (j < pos && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1; i = j; }
+        else if (c === '{') depth++;
+        else if (c === '}') depth = Math.max(0, depth - 1);
+      }
+      return depth;
+    }
+
+    // Insert a code snippet. Statements are only valid inside a function, so if the cursor is
+    // outside every function body the snippet goes at the end of Lesson_UI() instead.
+    insertSnippet(text) {
+      const ta = this.ta, code = ta.value;
+      let pos = ta.selectionStart, end = ta.selectionEnd, indent, moved = false, reuseNL = false;
+      if (CodeEditor.depthAt(code, pos) > 0) {
+        const ls = code.lastIndexOf('\n', pos - 1) + 1;
+        const before = code.slice(ls, pos);
+        indent = /^\s*$/.test(before) ? before : (before.match(/^\s*/) || [''])[0];
+        if (!/^\s*$/.test(before)) { text = '\n' + text; }         // cursor mid-line: start on a new line
+        else {                                                     // replace the blank indentation
+          pos = ls; end = Math.max(end, pos);
+          if (code[end] === '\n' || end === code.length) { text = text.replace(/\n$/, ''); reuseNL = true; }  // reuse the line's own newline
+        }
+      } else {
+        moved = true;
+        const m = /void\s+Lesson_UI\s*\([^)]*\)\s*\{/.exec(code);
+        if (!m) {                                                   // no Lesson_UI yet: wrap the snippet in one
+          const wrapped = '\nvoid Lesson_UI(void)\n{\n' + text.replace(/^(?=.)/gm, '    ') + '}\n';
+          ta.setRangeText(wrapped, code.length, code.length, 'end');
+          ta.dispatchEvent(new Event('input')); ta.focus();
+          return 'wrapped';
+        }
+        let d = 0, close = -1;
+        for (let i = m.index + m[0].length - 1; i < code.length; i++) {
+          if (code[i] === '{') d++;
+          else if (code[i] === '}' && --d === 0) { close = i; break; }
+        }
+        if (close < 0) close = code.length;
+        pos = end = code.lastIndexOf('\n', close - 1) + 1;          // start of the line holding the closing brace
+        indent = '    ';
+        if (code.slice(pos, close).trim() !== '') { pos = end = close; text = '\n' + text; }
+      }
+      const body = text.replace(/^(?=.)/gm, indent);
+      ta.setRangeText(reuseNL || body.endsWith('\n') ? body : body + '\n', pos, end, 'end');
+      ta.dispatchEvent(new Event('input'));
+      ta.focus();
+      return moved ? 'moved' : 'cursor';
+    }
+
     onKey(e) {
       const ta = this.ta;
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.onRun && this.onRun(); return; }

@@ -131,6 +131,11 @@
           state.innerHTML = `<span class="err">&#10007; ${r.stage} failed</span>`;
           html = `<span class="err">Build failed at stage: ${r.stage}</span>\n`;
         }
+        // Statements written outside any function produce these errors on ImGui:: lines.
+        if (diags.some(d => ['C4430', 'C2365', 'C2371', 'C2556'].includes(d.code))) {
+          html += '\n<span class="hint">&#128161; Code is probably <b>outside a function</b>. Statements like ImGui::Begin(...) only work ' +
+                  'inside a function body: move them between the { and } of <b>Lesson_UI()</b> (or Lesson_Init()).</span>\n';
+        }
         if (diags.length) {
           html += '\n' + diags.map(d => `<a class="diag ${d.severity}" data-line="${d.line}">Line ${d.line}: ${d.severity} ${d.code}: ${Highlight.escape(d.message)}</a>`).join('\n') + '\n';
         }
@@ -342,7 +347,13 @@ void Lesson_UI(void)
         <section class="ide-host wide" id="ideHost"></section>
       </div>`;
     const { editor } = createIDE($('#ideHost'), { storageKey: 'code:playground', starter: PLAYGROUND_STARTER, title: 'Playground' });
-    $$('.snip', main).forEach(b => b.onclick = () => editor.insert(SNIPPETS[+b.dataset.i][1]));
+    const state = $('.build-state', main);
+    $$('.snip', main).forEach(b => b.onclick = () => {
+      const where = editor.insertSnippet(SNIPPETS[+b.dataset.i][1]);
+      if (where === 'moved') state.innerHTML = '<span class="muted">cursor was outside a function - snippet added at the end of Lesson_UI()</span>';
+      else if (where === 'wrapped') state.innerHTML = '<span class="muted">no Lesson_UI() found - snippet wrapped in a new one</span>';
+      else state.textContent = '';
+    });
   }
 
   async function pageEngineApi() {

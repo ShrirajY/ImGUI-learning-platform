@@ -1,0 +1,11 @@
+{
+    // OGL.c is compiled as C++ (cl.exe /TP) because Dear ImGui is a C++ library.
+    // Tell IntelliSense the same, otherwise it shows false errors (bool, ImGui::, ...).
+    "files.associations": {
+        "OGL.c": "cpp",
+        "*.inl": "cpp",
+        "imgui*.h": "cpp",
+        "imconfig.h": "cpp",
+        "imstb_*.h": "cpp"
+    }
+}
