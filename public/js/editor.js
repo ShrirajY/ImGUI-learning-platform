@@ -86,7 +86,10 @@
     }
 
     // Brace depth at a position, ignoring braces inside comments, strings and char literals.
-    static depthAt(code, pos) {
+    // { minus } over the whole code (comments/strings ignored): 0 when balanced.
+    static braceBalance(code) { return CodeEditor.depthAt(code, code.length, true); }
+
+    static depthAt(code, pos, raw = false) {
       let depth = 0;
       for (let i = 0; i < pos; i++) {
         const c = code[i], n = code[i + 1];
@@ -94,17 +97,18 @@
         else if (c === '/' && n === '*') { const j = code.indexOf('*/', i + 2); if (j < 0 || j >= pos) break; i = j + 1; }
         else if (c === '"' || c === "'") { let j = i + 1; while (j < pos && code[j] !== c && code[j] !== '\n') j += code[j] === '\\' ? 2 : 1; i = j; }
         else if (c === '{') depth++;
-        else if (c === '}') depth = Math.max(0, depth - 1);
+        else if (c === '}') depth = raw ? depth - 1 : Math.max(0, depth - 1);
       }
       return depth;
     }
 
     // Insert a code snippet. Statements are only valid inside a function, so if the cursor is
     // outside every function body the snippet goes at the end of Lesson_UI() instead.
-    insertSnippet(text) {
+    // bodyMode: the whole editor is already a function body (playground "UI code" mode).
+    insertSnippet(text, bodyMode = false) {
       const ta = this.ta, code = ta.value;
       let pos = ta.selectionStart, end = ta.selectionEnd, indent, moved = false, reuseNL = false;
-      if (CodeEditor.depthAt(code, pos) > 0) {
+      if (bodyMode || CodeEditor.depthAt(code, pos) > 0) {
         const ls = code.lastIndexOf('\n', pos - 1) + 1;
         const before = code.slice(ls, pos);
         indent = /^\s*$/.test(before) ? before : (before.match(/^\s*/) || [''])[0];

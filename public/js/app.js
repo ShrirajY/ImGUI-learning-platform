@@ -95,11 +95,16 @@
   }
 
   // ------------------------------------------------------------------ IDE (editor + build)
-  function createIDE(host, { storageKey, starter, title }) {
+  // wrap: optional function turning the editor text into the full Lesson.inl (used by the
+  //       playground's "UI code" mode, where the editor only holds the body of Lesson_UI()).
+  function createIDE(host, { storageKey, starter, title, wrap = null, hint = null, fileName = null }) {
     host.appendChild($('#editorTemplate').content.cloneNode(true));
     const ide = host.querySelector('.ide');
     const log = ide.querySelector('.ide-log');
     const state = ide.querySelector('.build-state');
+    if (hint) ide.querySelector('.file-hint').innerHTML = hint;
+    if (fileName) ide.querySelector('.file-tab').textContent = fileName;
+    const fullCode = () => wrap ? wrap(editor.value) : editor.value;
     const saved = store.get(storageKey, null);
     const editor = new CodeEditor(ide.querySelector('.code-editor'), {
       value: saved !== null ? saved : starter,
@@ -120,7 +125,7 @@
       log.textContent = 'cl.exe /TP OGL.c (with your Lesson.inl) ...';
       try {
         const r = await api('/api/build', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: editor.value, title, run: true }) });
+          body: JSON.stringify({ code: fullCode(), title, run: true }) });
         editor.setMarks(r.diagnostics);
         const diags = (r.diagnostics || []).filter(d => d.file === 'Lesson.inl');
         let html = '';
@@ -131,8 +136,17 @@
           state.innerHTML = `<span class="err">&#10007; ${r.stage} failed</span>`;
           html = `<span class="err">Build failed at stage: ${r.stage}</span>\n`;
         }
+        const balance = CodeEditor.braceBalance(editor.value);
+        if (balance !== 0) {
+          html += `\n<span class="hint">&#128161; Your braces don't match: ${balance > 0 ? balance + ' <b>{</b> without a closing <b>}</b>' : (-balance) + ' extra <b>}</b>'}. ` +
+                  'Every <b>{</b> needs exactly one <b>}</b>.</span>\n';
+        }
+        if (wrap && diags.some(d => d.code === 'C2601')) {
+          html += '\n<span class="hint">&#128161; In <b>UI code</b> mode your code already runs inside Lesson_UI(), so you can\'t define functions here. ' +
+                  'Switch the playground to <b>Full file</b> mode to write your own functions.</span>\n';
+        }
         // Statements written outside any function produce these errors on ImGui:: lines.
-        if (diags.some(d => ['C4430', 'C2365', 'C2371', 'C2556'].includes(d.code))) {
+        else if (diags.some(d => ['C4430', 'C2365', 'C2371', 'C2556'].includes(d.code))) {
           html += '\n<span class="hint">&#128161; Code is probably <b>outside a function</b>. Statements like ImGui::Begin(...) only work ' +
                   'inside a function body: move them between the { and } of <b>Lesson_UI()</b> (or Lesson_Init()).</span>\n';
         }
@@ -159,7 +173,7 @@
       if (act === 'stop') { try { await api('/api/stop', { method: 'POST' }); state.textContent = 'stopped'; } catch { } refreshStatus(); }
       if (act === 'copy') { navigator.clipboard.writeText(editor.value); state.textContent = 'copied to clipboard'; }
       if (act === 'reset') { if (confirm('Discard your changes and restore the starter code?')) { editor.value = starter; store.del(storageKey); state.textContent = 'reset to starter code'; } }
-      if (act === 'full') showFullSource(editor.value);
+      if (act === 'full') showFullSource(fullCode());
     });
     return { editor, run };
   }
@@ -334,26 +348,57 @@ void Lesson_UI(void)
 }
 `;
 
+  // "UI code" mode: the editor holds only the BODY of Lesson_UI(). There are no function braces
+  // to break, so any snippet, anywhere, is valid. #line 1 makes compiler errors point at the
+  // editor's own line numbers.
+  const PLAYGROUND_UI_STARTER = `// This code runs INSIDE Lesson_UI(), once every frame.
+// Type any ImGui code or click a snippet - it is inserted at the cursor.
+// Use 'static' for variables that must keep their value between frames.
+static int clicks = 0;
+
+ImGui::Begin("Playground");
+ImGui::Text("Entities in scene: %d", gEntityCount);
+ImGui::ColorEdit3("Background", gClearColor);
+if (ImGui::Button("Click me"))
+    clicks++;
+ImGui::Text("Clicked %d times", clicks);
+ImGui::End();
+`;
+  const wrapUI = code => 'void Lesson_Init(void)\n{\n    Engine_Log("Playground started");\n}\n\n' +
+                         'void Lesson_UI(void)\n{\n#line 1\n' + code + '\n}\n';
+
   function pagePlayground() {
     setNav('playground');
     main.className = 'main';
+    const mode = store.get('playgroundMode', 'ui');
     main.innerHTML = `
       <div class="playground">
         <aside class="snippets">
+          <div class="mode-switch">
+            <button class="${mode === 'ui' ? 'on' : ''}" data-mode="ui" title="Editor holds only the code inside Lesson_UI() - hard to break">UI code</button>
+            <button class="${mode === 'full' ? 'on' : ''}" data-mode="full" title="Edit the whole Lesson.inl: your own functions, globals, Lesson_Init()">Full file</button>
+          </div>
+          <p class="muted small">${mode === 'ui'
+            ? 'You write the <b>inside</b> of <code>Lesson_UI()</code>. Snippets go in at the cursor.'
+            : 'Whole <code>Lesson.inl</code>. Snippets go inside <code>Lesson_UI()</code>.'}</p>
           <h3>Snippets</h3>
-          <p class="muted small">Click to insert at the cursor (inside <code>Lesson_UI</code>).</p>
           ${SNIPPETS.map((s, i) => `<button class="snip" data-i="${i}">${s[0]}</button>`).join('')}
         </aside>
         <section class="ide-host wide" id="ideHost"></section>
       </div>`;
-    const { editor } = createIDE($('#ideHost'), { storageKey: 'code:playground', starter: PLAYGROUND_STARTER, title: 'Playground' });
+    const opts = mode === 'ui'
+      ? { storageKey: 'code:playground-ui', starter: PLAYGROUND_UI_STARTER, title: 'Playground', wrap: wrapUI,
+          fileName: 'Lesson_UI() { ... }', hint: 'runs inside <b>Lesson_UI()</b> every frame &middot; no function braces needed' }
+      : { storageKey: 'code:playground', starter: PLAYGROUND_STARTER, title: 'Playground' };
+    const { editor } = createIDE($('#ideHost'), opts);
     const state = $('.build-state', main);
     $$('.snip', main).forEach(b => b.onclick = () => {
-      const where = editor.insertSnippet(SNIPPETS[+b.dataset.i][1]);
+      const where = editor.insertSnippet(SNIPPETS[+b.dataset.i][1], mode === 'ui');
       if (where === 'moved') state.innerHTML = '<span class="muted">cursor was outside a function - snippet added at the end of Lesson_UI()</span>';
       else if (where === 'wrapped') state.innerHTML = '<span class="muted">no Lesson_UI() found - snippet wrapped in a new one</span>';
       else state.textContent = '';
     });
+    $$('.mode-switch button', main).forEach(b => b.onclick = () => { store.set('playgroundMode', b.dataset.mode); pagePlayground(); });
   }
 
   async function pageEngineApi() {

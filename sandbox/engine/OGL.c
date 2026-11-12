@@ -338,6 +338,11 @@ static int Initialize(void)
     // with it on, io.WantCaptureKeyboard is true whenever ANY ImGui window is focused,
     // which would block WASD camera keys after clicking a panel. Off = captured only while typing.
     io.IniFilename = NULL;            // every lesson starts with a fresh layout
+    // Learning-friendly error handling: mistakes such as a missing End()/PopID() are repaired
+    // by ImGui and shown as a red tooltip instead of an "Assertion failed" crash dialog.
+    io.ConfigErrorRecovery              = true;
+    io.ConfigErrorRecoveryEnableAssert  = false;
+    io.ConfigErrorRecoveryEnableTooltip = true;
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_InitForOpenGL(ghwnd);
     ImGui_ImplOpenGL2_Init();

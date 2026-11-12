@@ -230,7 +230,10 @@ details[open] summary { margin-bottom: 6px; }
 /* playground */
 .playground { display: flex; height: 100%; }
 .snippets { width: 210px; flex: none; padding: 14px; border-right: 1px solid var(--border); overflow-y: auto; background: var(--bg2); }
-.snippets h3 { margin: 0 0 4px; }
+.snippets h3 { margin: 14px 0 4px; }
+.mode-switch { display: flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+.mode-switch button { flex: 1; padding: 6px 4px; background: var(--panel2); color: var(--muted); border: 0; cursor: pointer; font: 600 12.5px var(--sans); }
+.mode-switch button.on { background: var(--accent2); color: #fff; }
 .snip { display: block; width: 100%; text-align: left; margin: 4px 0; padding: 6px 10px; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font: 13px var(--sans); }
 .snip:hover { border-color: var(--accent); }
 .ide-host.wide { flex: 1; border-left: 0; }
